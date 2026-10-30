@@ -387,7 +387,7 @@ body::before {
 }
 
 /* ---------- In-hall controls: dock, mode switch, walking pad ---------- */
-html.is-exploring { overflow: hidden; }
+html.is-exploring { overscroll-behavior: none; }
 .chapter { bottom: calc(108px + env(safe-area-inset-bottom, 0px)); }
 
 .hall-ui {
@@ -458,3 +458,5 @@ html.is-exploring { overflow: hidden; }
   .chapter { bottom: calc(150px + env(safe-area-inset-bottom, 0px)); }
   .move-pad { right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(84px + env(safe-area-inset-bottom, 0px)); grid-template-columns: repeat(3, 42px); grid-template-rows: repeat(2, 42px); }
 }
+body:has(.card.is-open) .move-pad { opacity: 0; pointer-events: none; }
+.move-pad { transition: opacity .3s; }

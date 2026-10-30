@@ -196,7 +196,10 @@ function readScroll() {
   heroT = clamp(y / (HERO_LEN * VH), 0, 1);
   targetT = clamp((y - HERO_LEN * VH) / VH, 0, N - 1);
 }
-addEventListener('scroll', readScroll, { passive: true });
+addEventListener('scroll', () => {
+  readScroll();
+  if (mode === 'free' && performance.now() > ignoreScrollUntil) exitFree();
+}, { passive: true });
 
 function applyHero() {
   const z = heroT;
@@ -234,7 +237,7 @@ function updateChapter() {
   const s = STATIONS[idx];
   chapterStep.textContent = `Room ${ROMAN[idx]} of ${ROMAN[N - 1]}`;
   chapterTitle.textContent = s.id && products.get(s.id) ? products.get(s.id).data.name : s.title;
-  chapterHint.textContent = s.id ? 'Select the piece to see sizes and price' : (idx === 0 ? 'Keep scrolling to walk through the hall' : 'Look for the gold halo around each piece');
+  chapterHint.textContent = s.id ? 'Select the piece to see sizes and price · Drag to look around' : (idx === 0 ? 'Scroll to walk the tour · Drag to look around' : 'Drag to look around · Select a glowing piece');
   dots.forEach((d, i) => d.setAttribute('aria-current', i === idx ? 'true' : 'false'));
 }
 
@@ -266,9 +269,18 @@ addEventListener('pointermove', (e) => {
     tooltip.style.left = `${e.clientX}px`; tooltip.style.top = `${e.clientY}px`;
   } else tooltip.hidden = true;
 });
-/* Drag to look around (any direction). A drag inside the hall switches to free exploring. */
+/* Drag to look around in any direction. Works on the guided tour and when exploring;
+   scrolling keeps walking the tour. Movement is eased and carries a little momentum. */
+const LOOK_SPEED_X = 0.0034, LOOK_SPEED_Y = 0.0028;
+const lookVel = { x: 0, y: 0 };
+function addLook(dyaw, dpitch) {
+  const o = mode === 'free' ? free : tourOff;
+  o.tyaw += dyaw;
+  o.tpitch = clamp(o.tpitch + dpitch, mode === 'free' ? -0.85 : -0.7, mode === 'free' ? 0.75 : 0.6);
+}
 canvas.addEventListener('pointerdown', (e) => {
-  down = { x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, dragging: false, id: e.pointerId, type: e.pointerType };
+  down = { x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, dragging: false, id: e.pointerId, type: e.pointerType, t: performance.now() };
+  lookVel.x = lookVel.y = 0;
 });
 addEventListener('pointermove', (e) => {
   if (!down || e.pointerId !== down.id) return;
@@ -276,22 +288,32 @@ addEventListener('pointermove', (e) => {
   if (!down.dragging && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 8) {
     // on touch in guided mode, a mostly vertical swipe stays a page scroll
     if (mode === 'tour' && down.type !== 'mouse' && Math.abs(e.clientY - down.y) > Math.abs(e.clientX - down.x)) { down = null; return; }
-    down.dragging = true; enterFree();
+    down.dragging = true; free.fly = null;
     try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* not capturable */ }
   }
   if (down.dragging) {
-    free.yaw += dx * 0.0042; free.pitch = clamp(free.pitch + dy * 0.0034, -0.85, 0.75);
-    free.fly = null; canvas.style.cursor = 'grabbing';
+    const now = performance.now(), ms = Math.max(8, now - down.t);
+    addLook(dx * LOOK_SPEED_X, dy * LOOK_SPEED_Y);
+    // remember drag speed (per second) for momentum after release
+    lookVel.x = lookVel.x * 0.6 + (dx * LOOK_SPEED_X / ms * 1000) * 0.4;
+    lookVel.y = lookVel.y * 0.6 + (dy * LOOK_SPEED_Y / ms * 1000) * 0.4;
+    down.t = now; canvas.style.cursor = 'grabbing';
   }
   down.lx = e.clientX; down.ly = e.clientY;
 });
 addEventListener('pointerup', (e) => {
   if (!down || e.pointerId !== down.id) return;
-  const wasDrag = down.dragging; down = null;
+  const wasDrag = down.dragging;
+  if (wasDrag && performance.now() - down.t > 90) { lookVel.x = lookVel.y = 0; }   // held still before letting go
+  down = null;
   canvas.style.cursor = hoverId ? 'pointer' : 'default';
   if (wasDrag || e.target !== canvas) return;
   const id = pickAt(e.clientX, e.clientY);
-  if (id) { openCard(id); return; }
+  if (id) {
+    const p = products.get(id);
+    if (p && camera.position.distanceTo(p.center) > 7.5) goToProduct(id); else openCard(id);
+    return;
+  }
   closeCard();
   const floorPoint = pickFloor(e.clientX, e.clientY);
   if (floorPoint) { enterFree(); walkTo(floorPoint); }
@@ -315,17 +337,25 @@ const EYE = 3.75;                       // eye height above the hall floor (floo
 let mode = 'tour';
 let blend = 1;                          // 0..1 ease when returning from free exploring to the tour
 const snap = { pos: new THREE.Vector3(), quat: new THREE.Quaternion() };
-const free = { pos: new THREE.Vector3(0, EYE, -3), yaw: 0, pitch: 0, fly: null };
+const free = { pos: new THREE.Vector3(0, EYE, -3), yaw: 0, pitch: 0, tyaw: 0, tpitch: 0, fly: null };
+const tourOff = { yaw: 0, pitch: 0, tyaw: 0, tpitch: 0 };   // drag offset applied on top of the guided tour
+let ignoreScrollUntil = 0;
 const keys = new Set();
 const OBSTACLES = [                     // [x, z, radius] on the hall floor
   [0, -15, 1.05], [6.5, -8, 0.6], [6.5, -17, 0.7], [-6.5, -17, 0.6],
-  ...[-8, -16, -24, -32, -40].flatMap((z) => [[-13.2, z, 0.6], [13.2, z, 0.6]]),
+  ...[-8, -16, -24, -32, -40].flatMap((z) => [[-13.2, z, 0.95], [13.2, z, 0.95]]),
 ];
-function constrain(p) {
+const STAIR_Z = -30.6, AISLE_X = 12.7;   // the grand staircase fills the middle beyond STAIR_Z; side aisles run to the back wall
+function constrain(p, prev) {
   p.y = EYE;
   if (p.z > -1.2) p.x = clamp(p.x, -2.1, 2.1);         // doorway and porch
   p.x = clamp(p.x, -15.0, 15.0);                       // stop at the alcove shelves
-  p.z = clamp(p.z, -30.6, 3.4);                         // the staircase rises beyond -31
+  p.z = clamp(p.z, -49.2, 3.4);
+  if (p.z < STAIR_Z && Math.abs(p.x) < AISLE_X) {      // keep off the staircase
+    if (prev && Math.abs(prev.x) >= AISLE_X - 0.05) p.x = Math.sign(prev.x || 1) * AISLE_X;
+    else if (prev && prev.z < STAIR_Z) p.x = Math.sign(p.x || 1) * AISLE_X;
+    else p.z = STAIR_Z;
+  }
   for (const [ox, oz, r] of OBSTACLES) {
     const dx = p.x - ox, dz = p.z - oz, d = Math.hypot(dx, dz);
     if (d < r && d > 1e-4) { p.x = ox + dx / d * r; p.z = oz + dz / d * r; }
@@ -341,8 +371,9 @@ function enterFree() {
   mode = 'free';
   const dir = camera.getWorldDirection(new THREE.Vector3());
   free.pos.copy(camera.position);
-  free.yaw = Math.atan2(-dir.x, -dir.z);
-  free.pitch = Math.asin(clamp(dir.y, -1, 1));
+  free.yaw = free.tyaw = Math.atan2(-dir.x, -dir.z);
+  free.pitch = free.tpitch = Math.asin(clamp(dir.y, -1, 1));
+  tourOff.yaw = tourOff.tyaw = tourOff.pitch = tourOff.tpitch = 0;
   blend = 1;
   document.documentElement.classList.add('is-exploring');
   canvas.style.touchAction = 'none';
@@ -357,22 +388,44 @@ function exitFree() {
   snap.pos.copy(camera.position); snap.quat.copy(camera.quaternion);
   document.documentElement.classList.remove('is-exploring');
   canvas.style.touchAction = 'pan-y';
+  ignoreScrollUntil = performance.now() + 250;
   scrollTo({ top: stationScrollY(best), behavior: 'auto' });
   readScroll(); curT = targetT; currentStation = -1;
   syncModeUi();
 }
+/* Route along the floor: around the columns, through the side aisles, never across the staircase. */
+function routeTo(from, to) {
+  const pts = [from.clone()];
+  const side = (v) => (Math.abs(v.x) > 12 ? Math.sign(v.x) : 0);
+  const sFrom = side(from), sTo = side(to);
+  const aisleX = 14.25;
+  if (sFrom && from.z < -12 && sFrom !== sTo) pts.push(new THREE.Vector3(sFrom * 11.2, EYE, Math.max(from.z, -28) + 1.5));
+  if (sTo && sFrom !== sTo) {
+    const approachZ = Math.max(to.z + 4.2, -27.5);
+    pts.push(new THREE.Vector3(sTo * 11.2, EYE, approachZ + 1.0));
+    pts.push(new THREE.Vector3(sTo * aisleX, EYE, approachZ));
+  }
+  if (sTo && sFrom === sTo) pts.push(new THREE.Vector3(sTo * aisleX, EYE, (from.z + to.z) / 2));
+  if (!sTo && from.z < -28 && sFrom) pts.push(new THREE.Vector3(sFrom * 11.2, EYE, -27));
+  pts.push(to.clone());
+  if (pts.length === 2) return { getPoint: (k) => new THREE.Vector3().lerpVectors(from, to, k), length: from.distanceTo(to) };
+  const c = new THREE.CatmullRomCurve3(pts, false, 'centripetal');
+  return { getPoint: (k) => c.getPointAt(k), length: c.getLength() };
+}
 function flyTo(pos, look, then) {
   const to = yawPitchFrom(new THREE.Vector3(...pos), new THREE.Vector3(...look));
-  let dyaw = to.yaw - free.yaw; dyaw = Math.atan2(Math.sin(dyaw), Math.cos(dyaw));
+  let dyaw = to.yaw - free.tyaw; dyaw = Math.atan2(Math.sin(dyaw), Math.cos(dyaw));
+  const dest = new THREE.Vector3(pos[0], EYE, pos[2]);
+  const route = routeTo(free.pos, dest);
   free.fly = {
-    p0: free.pos.clone(), p1: new THREE.Vector3(pos[0], EYE, pos[2]),
-    y0: free.yaw, y1: free.yaw + dyaw, a0: free.pitch, a1: to.pitch,
-    t: 0, dur: reduceMotion ? 0.01 : clamp(free.pos.distanceTo(new THREE.Vector3(...pos)) / 7, 0.9, 2.6), then,
+    route, p0: free.pos.clone(), p1: dest,
+    y0: free.tyaw, y1: free.tyaw + dyaw, a0: free.tpitch, a1: to.pitch,
+    t: 0, dur: reduceMotion ? 0.01 : clamp(route.length / 7.5, 1.0, 3.6), then,
   };
 }
 function walkTo(point) {
-  const target = constrain(new THREE.Vector3(point.x, EYE, point.z));
-  free.fly = { p0: free.pos.clone(), p1: target, y0: free.yaw, y1: free.yaw, a0: free.pitch, a1: free.pitch,
+  const target = constrain(new THREE.Vector3(point.x, EYE, point.z), free.pos);
+  free.fly = { route: routeTo(free.pos, target), p0: free.pos.clone(), p1: target, y0: free.tyaw, y1: free.tyaw, a0: free.tpitch, a1: free.tpitch,
     t: 0, dur: reduceMotion ? 0.01 : clamp(free.pos.distanceTo(target) / 5, 0.5, 3), then: null };
 }
 function goToProduct(id) {
@@ -384,25 +437,40 @@ function goToProduct(id) {
   enterFree();
   flyTo(s.pos, s.look, () => openCard(id));
 }
+const prevPos = new THREE.Vector3();
+function applyMomentum(dt) {
+  if (down && down.dragging) return;
+  if (Math.abs(lookVel.x) + Math.abs(lookVel.y) < 0.002) { lookVel.x = lookVel.y = 0; return; }
+  addLook(lookVel.x * dt, lookVel.y * dt);
+  const decay = Math.exp(-dt * 5.5);
+  lookVel.x *= decay; lookVel.y *= decay;
+}
 function updateFree(dt) {
+  prevPos.copy(free.pos);
   if (free.fly) {
     const f = free.fly; f.t += dt / f.dur;
-    const k = f.t >= 1 ? 1 : 1 - Math.pow(1 - f.t, 3);
-    free.pos.lerpVectors(f.p0, f.p1, k);
-    free.yaw = f.y0 + (f.y1 - f.y0) * k; free.pitch = f.a0 + (f.a1 - f.a0) * k;
+    const tt = Math.min(1, f.t);
+    const k = tt < 0.5 ? 4 * tt * tt * tt : 1 - Math.pow(-2 * tt + 2, 3) / 2;   // ease in and out
+    if (f.route) free.pos.copy(f.route.getPoint(k)); else free.pos.lerpVectors(f.p0, f.p1, k);
+    free.tyaw = f.y0 + (f.y1 - f.y0) * k; free.tpitch = f.a0 + (f.a1 - f.a0) * k;
+    free.yaw = free.tyaw; free.pitch = free.tpitch;
     if (f.t >= 1) { free.fly = null; if (f.then) f.then(); }
   } else {
     const fwd = (keys.has('w') || keys.has('arrowup') || pad.has('fwd') ? 1 : 0) - (keys.has('s') || keys.has('arrowdown') || pad.has('back') ? 1 : 0);
     const side = (keys.has('d') ? 1 : 0) - (keys.has('a') ? 1 : 0);
     const turn = (keys.has('arrowleft') || pad.has('left') ? 1 : 0) - (keys.has('arrowright') || pad.has('right') ? 1 : 0);
-    free.yaw += turn * dt * 1.6;
+    free.tyaw += turn * dt * 1.6;
     if (fwd || side) {
       const sp = 4.2 * dt;
       free.pos.x += (-Math.sin(free.yaw) * fwd + Math.cos(free.yaw) * side) * sp;
       free.pos.z += (-Math.cos(free.yaw) * fwd - Math.sin(free.yaw) * side) * sp;
     }
+    applyMomentum(dt);
+    const ease = 1 - Math.exp(-dt * 12);       // smooth look-around
+    free.yaw += (free.tyaw - free.yaw) * ease;
+    free.pitch += (free.tpitch - free.pitch) * ease;
   }
-  constrain(free.pos);
+  if (!free.fly) constrain(free.pos, prevPos);
   camera.position.copy(free.pos);
   camera.rotation.set(free.pitch, free.yaw, 0, 'YXZ');
 }
@@ -417,11 +485,16 @@ addEventListener('keydown', (e) => {
 addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
 addEventListener('blur', () => keys.clear());
 canvas.addEventListener('wheel', (e) => {
-  if (mode !== 'free') return;
-  e.preventDefault(); free.fly = null;
-  const step = clamp(-e.deltaY * 0.01, -1.2, 1.2);
-  free.pos.x += -Math.sin(free.yaw) * step; free.pos.z += -Math.cos(free.yaw) * step;
+  // two-finger sideways swipe on a trackpad turns the view; up/down scrolling walks the tour
+  if (Math.abs(e.deltaX) > Math.abs(e.deltaY) * 1.2 && hallReady && heroT >= 0.98) {
+    e.preventDefault(); free.fly = null; addLook(-e.deltaX * 0.0022, 0); return;
+  }
 }, { passive: false });
+addEventListener('wheel', (e) => {
+  if (mode !== 'free' || Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+  if (e.target.closest && e.target.closest('.drawer, .card, .dock-wrap')) return;
+  exitFree();                                    // scrolling always picks the guided tour back up
+}, { passive: true });
 
 /* On-screen walking pad (touch and mouse) */
 const pad = new Set();
@@ -458,8 +531,8 @@ function syncModeUi() {
     chapterStep.textContent = 'Free exploring';
     chapterTitle.textContent = 'The Great Hall';
     chapterHint.textContent = matchMedia('(pointer: coarse)').matches
-      ? 'Drag to look around · Tap the floor to walk there'
-      : 'Drag to look around · W A S D or arrows to walk · Click the floor to walk there';
+      ? 'Drag to look around · Tap the floor to walk there · Return to the tour below'
+      : 'Drag to look around · W A S D or arrows to walk · Click the floor to walk there · Scroll to continue the tour';
   } else currentStation = -1;
 }
 function markDock() {
@@ -624,6 +697,7 @@ curT = targetT;
 const clock = new THREE.Clock();
 const look = new THREE.Vector3();
 const tourQuat = new THREE.Quaternion();
+const tourEuler = new THREE.Euler(0, 0, 0, 'YXZ');
 function frame() {
   const rawDt = Math.min(0.25, clock.getDelta());
   const dt = Math.min(0.05, rawDt);
@@ -637,8 +711,23 @@ function frame() {
       const u = stationParam(curT) / (N - 1);
       camera.position.copy(posCurve.getPoint(u));
       look.copy(lookCurve.getPoint(u));
-      look.x += mx * 1.2; look.y -= my * 0.7;
+      if (!(down && down.dragging) && !tourOff.tyaw && !tourOff.tpitch) { look.x += mx * 0.6; look.y -= my * 0.35; }
       camera.lookAt(look);
+      applyMomentum(dt);
+      if (Math.abs(targetT - curT) > 0.015) {          // walking on: let the view drift back to the path
+        const back = Math.exp(-dt * 2.2); tourOff.tyaw *= back; tourOff.tpitch *= back;
+        if (Math.abs(tourOff.tyaw) < 1e-3) tourOff.tyaw = 0;
+        if (Math.abs(tourOff.tpitch) < 1e-3) tourOff.tpitch = 0;
+      }
+      const ease = 1 - Math.exp(-dt * 12);
+      tourOff.yaw += (tourOff.tyaw - tourOff.yaw) * ease;
+      tourOff.pitch += (tourOff.tpitch - tourOff.pitch) * ease;
+      if (tourOff.yaw || tourOff.pitch) {
+        tourEuler.setFromQuaternion(camera.quaternion, 'YXZ');
+        tourEuler.y += tourOff.yaw;
+        tourEuler.x = clamp(tourEuler.x + tourOff.pitch, -1.2, 1.2);
+        camera.quaternion.setFromEuler(tourEuler);
+      }
       if (blend < 1) {
         blend = Math.min(1, blend + dt / 1.1);
         const k = blend * blend * (3 - 2 * blend);
