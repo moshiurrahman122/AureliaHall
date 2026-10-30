@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Palais Héritage</title>
+  <meta name="description" content="Palais Héritage — curators of timeless luxury. Step inside the Great Hall to explore the collection.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Montserrat:wght@300;400;500;600&display=swap">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+
+  <!-- Fixed stage: hero photograph, bronze doors, WebGL hall -->
+  <div class="stage" aria-hidden="true">
+    <div class="hero-frame">
+      <div class="hero-zoom" id="heroZoom">
+        <img class="hero-img" src="assets/hero.jpg" alt="">
+        <div class="doors" id="doors">
+          <div class="door door-l" id="doorL"></div>
+          <div class="door door-r" id="doorR"></div>
+          <div class="door-glow" id="doorGlow"></div>
+        </div>
+        <div class="hero-shade" id="heroShade"></div>
+      </div>
+    </div>
+    <canvas id="hall"></canvas>
+    <div class="flash" id="flash"></div>
+  </div>
+
+  <!-- Header -->
+  <header class="site-header" id="header">
+    <a class="brand" href="#top" aria-label="Palais Héritage, back to the entrance">
+      <svg viewBox="0 0 80 92" fill="none" stroke="currentColor" stroke-linecap="square" aria-hidden="true">
+        <path d="M13 36 A27 27 0 0 1 67 36" stroke-width="1.6"/>
+        <path d="M17.5 36 A22.5 22.5 0 0 1 62.5 36" stroke-width=".8"/>
+        <path d="M37 7.5 L43 7.5 L41.6 13 L38.4 13 Z" stroke-width="1.1" fill="currentColor"/>
+        <path d="M10 36 H70" stroke-width="1.2"/>
+        <path d="M13 36 V82 M17.5 36 V82 M62.5 36 V82 M67 36 V82" stroke-width="1.1"/>
+        <path d="M11 40 H19.5 M60.5 40 H69 M11 80 H19.5 M60.5 80 H69" stroke-width="1"/>
+        <path d="M7 84 H73 M4 88 H76" stroke-width="1.3"/>
+        <g stroke-width="2.1"><path d="M31 46 V76"/><path d="M49 46 V76"/><path d="M31 61 H49"/><path d="M31 46 H41.5 C48.5 46 48.5 58 41.5 58 H31" stroke-width="1.4"/></g>
+        <path d="M27.5 46 H34.5 M45.5 46 H52.5 M27.5 76 H34.5 M45.5 76 H52.5" stroke-width="1.2"/>
+      </svg>
+      <span class="brand-word">Palais Héritage</span>
+    </a>
+    <div class="header-actions">
+      <button class="icon-btn" id="cartBtn" type="button" aria-label="Open cart">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true">
+          <path d="M5 8h14l-1.2 12.2a1 1 0 0 1-1 .8H7.2a1 1 0 0 1-1-.8L5 8Z"/>
+          <path d="M9 10V6.5a3 3 0 0 1 6 0V10"/>
+        </svg>
+        <span class="cart-count" id="cartCount" data-empty="true">0</span>
+      </button>
+      <button class="icon-btn" id="menuBtn" type="button" aria-label="Open menu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
+          <path d="M3 7h18M3 12h18M3 17h18"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Hero copy -->
+  <section class="hero-copy" id="heroCopy" aria-label="Welcome">
+    <div class="eyebrow">Welcome to the Archive</div>
+    <h1 class="hero-title">PALAIS<br>HÉRITAGE</h1>
+    <div class="hero-rule"></div>
+    <p class="hero-sub">Curators of Timeless Luxury.</p>
+  </section>
+  <div class="scroll-cue" id="scrollCue">
+    <span>Scroll to Enter the Great Hall</span>
+    <span class="cue-line"></span>
+    <span class="load-note" id="loadNote">Preparing the Great Hall</span>
+  </div>
+
+  <!-- In-hall chapter caption + station dots -->
+  <div class="chapter" id="chapter" aria-live="polite">
+    <div class="chapter-step" id="chapterStep"></div>
+    <div class="chapter-title" id="chapterTitle"></div>
+    <div class="chapter-hint" id="chapterHint"></div>
+  </div>
+  <nav class="progress" id="progress" aria-label="Rooms of the hall"></nav>
+  <div class="tooltip" id="tooltip" hidden></div>
+
+  <!-- In-hall controls: go to any piece, switch between guided tour and free exploring -->
+  <div class="hall-ui" id="hallUi">
+    <div class="hall-ui-row">
+      <button class="btn-mode" id="modeBtn" type="button" aria-pressed="false">Explore freely</button>
+      <div class="dock-wrap">
+        <div class="dock" id="dock" role="toolbar" aria-label="Go to a piece"></div>
+      </div>
+    </div>
+  </div>
+  <div class="move-pad" id="movePad" hidden aria-label="Walk">
+    <button type="button" data-pad="fwd" aria-label="Walk forward" class="pad-up">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg></button>
+    <button type="button" data-pad="left" aria-label="Turn left" class="pad-left">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
+    <button type="button" data-pad="right" aria-label="Turn right" class="pad-right">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+    <button type="button" data-pad="back" aria-label="Walk back" class="pad-down">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+  </div>
+
+  <!-- Product card -->
+  <aside class="card" id="card" role="dialog" aria-modal="false" aria-labelledby="cardName" aria-hidden="true">
+    <button class="card-close" id="cardClose" type="button" aria-label="Close">×</button>
+    <div>
+      <div class="card-ref" id="cardRef">No. 01</div>
+      <h2 class="card-name" id="cardName">Product</h2>
+    </div>
+    <div class="card-price" id="cardPrice"></div>
+    <div>
+      <div class="field-label" id="sizeLabel">Size</div>
+      <div class="sizes" id="cardSizes" role="group" aria-labelledby="sizeLabel"></div>
+    </div>
+    <button class="btn btn-primary" id="addBtn" type="button" disabled>Select a size</button>
+  </aside>
+
+  <!-- Drawers -->
+  <div class="scrim" id="scrim"></div>
+
+  <aside class="drawer" id="cartDrawer" aria-label="Cart" aria-hidden="true">
+    <div class="drawer-head">
+      <h2 class="drawer-title">Your Selection</h2>
+      <button class="drawer-close" type="button" data-close aria-label="Close cart">×</button>
+    </div>
+    <div class="cart-lines" id="cartLines"></div>
+    <div class="cart-foot">
+      <div class="subtotal"><span>Subtotal</span><b id="subtotal">$0</b></div>
+      <button class="btn btn-primary" id="checkoutBtn" type="button">Proceed to Checkout</button>
+      <button class="btn btn-secondary" type="button" data-close>Continue Exploring</button>
+      <div class="cart-note" id="cartNote"></div>
+    </div>
+  </aside>
+
+  <aside class="drawer menu-drawer" id="menuDrawer" aria-label="Menu" aria-hidden="true">
+    <div class="drawer-head">
+      <h2 class="drawer-title">Palais Héritage</h2>
+      <button class="drawer-close" type="button" data-close aria-label="Close menu">×</button>
+    </div>
+    <div class="menu-links">
+      <button type="button" data-goto="0">The Entrance</button>
+      <button type="button" data-goto="1">The Great Hall</button>
+      <button type="button" id="aboutBtn">About</button>
+      <button type="button" id="contactBtn">Contact</button>
+    </div>
+    <div class="menu-section-label">The Collection</div>
+    <div class="collection" id="collection"></div>
+    <p class="about-copy" id="aboutCopy" hidden>Palais Héritage gathers couture, jewellery and fine leather goods inside a restored civic hall. Every piece is shown where it can be seen properly: under the chandelier, in a lit alcove, or on velvet.</p>
+    <p class="about-copy" id="contactCopy" hidden>Private appointments: concierge@palais-heritage.com</p>
+  </aside>
+
+  <div class="toast" id="toast" role="status"></div>
+  <div class="fallback" id="fallback" hidden></div>
+
+  <div class="track" id="track"></div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
