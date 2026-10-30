@@ -45,7 +45,7 @@ button { font: inherit; color: inherit; }
   transform: translate(-50%, -50%);
 }
 .hero-zoom {
-  position: absolute; inset: 0;
+  position: absolute; inset: 0; z-index: 2; transition: opacity 1.2s var(--ease);
   transform-origin: 50% 81.5%;
   will-change: transform;
 }
@@ -460,3 +460,7 @@ html.is-exploring { overscroll-behavior: none; }
 }
 body:has(.card.is-open) .move-pad { opacity: 0; pointer-events: none; }
 .move-pad { transition: opacity .3s; }
+
+.hero-zoom.is-hidden { opacity: 0; pointer-events: none; }
+#hall { opacity: 0; transition: opacity .8s; }
+.hero-frame { z-index: 2; pointer-events: none; }

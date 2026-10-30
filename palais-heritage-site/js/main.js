@@ -1,4 +1,4 @@
-// Palais Héritage — scroll journey from the blue-hour facade into the Great Hall.
+// Palais Héritage — scroll journey across the town square, through the doors and into the Great Hall.
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
@@ -20,8 +20,16 @@ const PRODUCTS = {
   product_10: { name: 'Baroque Silk Twill Scarf', price: '$420', sizes: '90 × 90 cm' },
 };
 
-/* Camera stations through the hall (three.js coordinates, metres). */
+/* Camera stations (three.js coordinates, metres). The first ones walk across the square outside. */
+const OUTSIDE = [
+  { title: 'Palais Héritage',       pos: [0, 6.0, 78],       look: [0, 15, 10], outside: true },
+  { title: 'The Fountain Square',   pos: [12.5, 3.6, 57],    look: [-1, 6, 28], outside: true },
+  { title: 'The Town Hall',         pos: [2, 2.8, 30],       look: [0, 13, 0], outside: true },
+  { title: 'The Porch',             pos: [0, 2.9, 14],       look: [0, 5, 0], outside: true },
+];
+const HALL0 = OUTSIDE.length;          // index of the first stop inside
 const STATIONS = [
+  ...OUTSIDE,
   { title: 'The Entrance',          pos: [0, 4.0, 3.4],      look: [0, 4.6, -20] },
   { title: 'The Great Hall',        pos: [0, 5.2, -3.5],     look: [0, 9.0, -34] },
   { title: 'Velvet Embroidered Gown', id: 'product_01', pos: [1.8, 3.9, -10.0], look: [0, 3.4, -15] },
@@ -37,7 +45,7 @@ const STATIONS = [
   { title: 'Gold Satin Crystal Pumps', id: 'product_04', pos: [14.2, 3.9, -12], look: [16.45, 3.7, -12] },
 ];
 const N = STATIONS.length;
-const ROMAN = ['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII','XIII'];
+const ROMAN = ['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII','XIII','XIV','XV'];
 
 const $ = (id) => document.getElementById(id);
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -47,13 +55,12 @@ const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 /* ------------------------------ Scroll track ------------------------------ */
 const track = $('track');
 let VH = innerHeight;
-const HERO_LEN = 1.5;            // viewport heights spent on the facade + doors
 function layoutTrack() {
   VH = innerHeight;
-  track.style.height = `${(HERO_LEN + (N - 1) + 1) * VH}px`;
+  track.style.height = `${N * VH}px`;            // one screen of scrolling per stop
 }
 layoutTrack();
-function stationScrollY(i) { return Math.round((HERO_LEN + i) * VH); }
+function stationScrollY(i) { return Math.round(i * VH); }
 
 /* ------------------------------ Renderer ------------------------------ */
 const canvas = $('hall');
@@ -67,7 +74,8 @@ try {
 }
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0f1116);
-const camera = new THREE.PerspectiveCamera(52, innerWidth / innerHeight, 0.05, 400);
+const camera = new THREE.PerspectiveCamera(52, innerWidth / innerHeight, 0.05, 1600);
+camera.position.set(...OUTSIDE[0].pos); camera.lookAt(...OUTSIDE[0].look);
 
 if (renderer) {
   renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.75));
@@ -77,6 +85,12 @@ if (renderer) {
   const pm = new THREE.PMREMGenerator(renderer);
   scene.environment = pm.fromScene(new RoomEnvironment(renderer), 0.04).texture;
 }
+
+/* Daylight for the square; it fades out as the visitor walks indoors. */
+const sun = new THREE.DirectionalLight(0xfff0d8, 2.4);
+sun.position.set(-60, 90, 70);
+const skyFill = new THREE.HemisphereLight(0xcfe2ff, 0x5b4a38, 0.75);
+scene.add(sun, skyFill);
 
 /* Warm lighting for the hall */
 scene.add(new THREE.HemisphereLight(0xfff0dc, 0x40201a, 0.3));
@@ -119,19 +133,98 @@ const haloTexture = (() => {
 })();
 
 const loadNote = $('loadNote');
-if (renderer) {
-  new GLTFLoader().load('assets/hall.glb', (gltf) => {
-    const root = gltf.scene;
-    root.traverse((o) => {
-      if (o.isMesh) {
+const loader = new GLTFLoader();
+let extReady = false, extRoot = null, hallRoot = null;
+const treeMeshes = [];
+const animated = { water: [], flags: [], sky: null };
+function tuneMaterials(root) {
+  root.traverse((o) => {
+    if (!o.isMesh) return;
+    const mats = Array.isArray(o.material) ? o.material : [o.material];
+    mats.forEach((m) => {
+      if ('envMapIntensity' in m) m.envMapIntensity = m.metalness > 0.5 ? 0.8 : 0.18;
+      if (m.transparent) m.depthWrite = false;
+    });
+  });
+}
+function loadOutside() {
+  return new Promise((resolve) => {
+    loader.load(ASSET_EXTERIOR, (gltf) => {
+      extRoot = gltf.scene;
+      tuneMaterials(extRoot);
+      extRoot.traverse((o) => {
+        if (!o.isMesh) return;
         const mats = Array.isArray(o.material) ? o.material : [o.material];
         mats.forEach((m) => {
-          if ('envMapIntensity' in m) m.envMapIntensity = m.metalness > 0.5 ? 0.8 : 0.18;
-          if (m.transparent) m.depthWrite = false;
+          const n = m.name || '';
+          // Pools are drawn solid so they never swap order with the falls; foam and falls sit on top.
+          if (n === 'Water') { m.transparent = false; m.depthWrite = true; m.opacity = 1; m.alphaTest = 0;
+            m.polygonOffset = true; m.polygonOffsetFactor = -2; m.polygonOffsetUnits = -4; o.renderOrder = 1; }
+          if (n === 'Water_Fall' || n === 'Foam') { m.transparent = true; m.depthWrite = false;
+            m.polygonOffset = true; m.polygonOffsetFactor = n === 'Foam' ? -4 : -3; m.polygonOffsetUnits = n === 'Foam' ? -8 : -6;
+            o.renderOrder = n === 'Foam' ? 3 : 2; }
+          if (/^(Water_Fall|Water|Foam)$/.test(n) && m.map) {
+            m.map.wrapS = m.map.wrapT = THREE.RepeatWrapping; m.map.needsUpdate = true;
+            const speed = n === 'Water_Fall' ? [0, 1.0] : n === 'Foam' ? [0.02, 0.06] : [0.03, 0.02];
+            if (!animated.water.find((w) => w.map === m.map)) animated.water.push({ map: m.map, speed });
+            if (m.emissiveMap && m.emissiveMap !== m.map) { m.emissiveMap.wrapS = m.emissiveMap.wrapT = THREE.RepeatWrapping; animated.water.push({ map: m.emissiveMap, speed }); }
+          }
+          if (n === 'Sky_Dome') { m.toneMapped = false; m.fog = false; }
         });
+        if (o.name.startsWith('Flag_')) {
+          const pos = o.geometry.attributes.position;
+          o.geometry = o.geometry.clone();
+          const base = Float32Array.from(o.geometry.attributes.position.array);
+          let minX = Infinity; for (let i = 0; i < pos.count; i++) minX = Math.min(minX, base[i * 3]);
+          animated.flags.push({ mesh: o, base, minX });
+        }
+        if (o.name.startsWith('Sky_Dome')) { animated.sky = o; o.frustumCulled = false; }
+      });
+      scene.add(extRoot);
+      Promise.resolve().finally(() => {             // trees left out to keep the square light
+        extReady = true;
+        $('heroZoom').classList.add('is-hidden');
+        resolve();
+      });
+    }, (ev) => {
+      if (ev.total) loadNote.textContent = `Preparing the square · ${Math.round(ev.loaded / ev.total * 100)}%`;
+    }, () => { loadNote.textContent = 'The square could not be loaded. Check the assets folder.'; resolve(); });
+  });
+}
+function loadTrees() {
+  return Promise.all([
+    new Promise((res, rej) => loader.load(ASSET_TREE, res, undefined, rej)),
+    fetch(ASSET_TREE_LIST).then((r) => r.json()),
+  ]).then(([gltf, list]) => {
+    const dummy = new THREE.Object3D();
+    gltf.scene.updateMatrixWorld(true);
+    gltf.scene.traverse((o) => {
+      if (!o.isMesh) return;
+      const mat = o.material;
+      if (mat.transparent || mat.alphaTest || (mat.map && /leaves/i.test(mat.name))) {
+        mat.transparent = false; mat.alphaTest = 0.45; mat.depthWrite = true; mat.side = THREE.DoubleSide;
       }
+      mat.envMapIntensity = 0.25;
+      const inst = new THREE.InstancedMesh(o.geometry, mat, list.length);
+      list.forEach(([x, y, z, rot, sc], i) => {
+        dummy.position.set(x, y, z); dummy.rotation.set(0, rot, 0); dummy.scale.setScalar(sc);
+        dummy.updateMatrix();
+        inst.setMatrixAt(i, dummy.matrix.clone().multiply(o.matrixWorld));
+      });
+      inst.instanceMatrix.needsUpdate = true;
+      inst.computeBoundingSphere();
+      scene.add(inst); treeMeshes.push(inst);
     });
+  }).catch(() => { /* trees are decoration; carry on without them */ });
+}
+const ASSET_EXTERIOR = 'assets/exterior.glb', ASSET_TREE = 'assets/tree.glb', ASSET_TREE_LIST = 'assets/trees.json', ASSET_HALL = 'assets/hall.glb';
+if (renderer) loadOutside().then(() => loadHall());
+function loadHall() {
+  loader.load(ASSET_HALL, (gltf) => {
+    const root = gltf.scene; hallRoot = root;
+    tuneMaterials(root);
     scene.add(root);
+    buildDoors(root);
     root.updateMatrixWorld(true);
     floorMesh = root.getObjectByName('Floor_Checker') || null;
 
@@ -157,16 +250,15 @@ if (renderer) {
     });
     buildCollection(); buildDock();
     hallReady = true;
-    loadNote.textContent = 'The Great Hall is ready';
-    setTimeout(() => { loadNote.textContent = ''; }, 2400);
+    requestAnimationFrame(() => { try { renderThumbs(); } catch (e) { /* pictures are optional */ } });
+    loadNote.textContent = '';
   }, (ev) => {
-    if (ev.total) loadNote.textContent = `Preparing the Great Hall · ${Math.round(ev.loaded / ev.total * 100)}%`;
+    if (ev.total && scrollY < VH * 0.3) loadNote.textContent = `Preparing the Great Hall · ${Math.round(ev.loaded / ev.total * 100)}%`;
   }, () => {
     loadNote.textContent = 'The hall could not be loaded. Check that hall.glb sits in the assets folder.';
   });
-} else {
-  loadNote.textContent = '';
 }
+if (!renderer) loadNote.textContent = '';
 function pick(src, keys) { const o = {}; keys.forEach((k) => { if (src[k]) o[k] = src[k]; }); return o; }
 
 /* Camera paths through the stations */
@@ -174,8 +266,7 @@ const posCurve = new THREE.CatmullRomCurve3(STATIONS.map((s) => new THREE.Vector
 const lookCurve = new THREE.CatmullRomCurve3(STATIONS.map((s) => new THREE.Vector3(...s.look)), false, 'catmullrom', 0.35);
 
 /* ------------------------------ Scroll state ------------------------------ */
-const heroZoom = $('heroZoom'), doorL = $('doorL'), doorR = $('doorR'), doorGlow = $('doorGlow');
-const heroCopy = $('heroCopy'), scrollCue = $('scrollCue'), flash = $('flash'), header = $('header');
+const heroCopy = $('heroCopy'), scrollCue = $('scrollCue'), header = $('header');
 const chapter = $('chapter'), chapterStep = $('chapterStep'), chapterTitle = $('chapterTitle'), chapterHint = $('chapterHint');
 const progressNav = $('progress');
 
@@ -188,13 +279,13 @@ STATIONS.forEach((s, i) => {
 const dots = [...progressNav.children];
 
 let targetT = 0, curT = 0;         // station parameter (0..N-1), smoothed
-let heroT = 0;
+let heroT = 0;                     // 0 outside, 1 once the visitor stands in the entrance
 let currentStation = -1;
 
 function readScroll() {
   const y = scrollY;
-  heroT = clamp(y / (HERO_LEN * VH), 0, 1);
-  targetT = clamp((y - HERO_LEN * VH) / VH, 0, N - 1);
+  targetT = clamp(y / VH, 0, N - 1);
+  heroT = clamp(targetT - (HALL0 - 1), 0, 1);
 }
 addEventListener('scroll', () => {
   readScroll();
@@ -202,25 +293,17 @@ addEventListener('scroll', () => {
 }, { passive: true });
 
 function applyHero() {
-  const z = heroT;
-  const zoom = 1 + 6.5 * Math.pow(smooth(0.05, 1, z), 1.6);
-  heroZoom.style.transform = `scale(${zoom})`;
-  const open = smooth(0.14, 0.62, z);
-  doorL.style.transform = `rotateY(${-104 * open}deg)`;
-  doorR.style.transform = `rotateY(${104 * open}deg)`;
-  doorGlow.style.opacity = (0.15 + 0.85 * open).toFixed(3);
-  heroCopy.style.opacity = (1 - smooth(0, 0.22, z)).toFixed(3);
-  heroCopy.style.transform = `translateY(${-40 * smooth(0, 0.3, z)}px)`;
-  scrollCue.style.opacity = (1 - smooth(0, 0.12, z)).toFixed(3);
-  const fade = smooth(0.74, 0.98, z) * (hallReady ? 1 : 0);
-  flash.style.opacity = (Math.sin(Math.PI * smooth(0.66, 1, z)) * 0.9).toFixed(3);
-  canvas.style.opacity = fade.toFixed(3);
+  const z = targetT;
+  heroCopy.style.opacity = (1 - smooth(0, 0.3, z)).toFixed(3);
+  heroCopy.style.transform = `translateY(${-40 * smooth(0, 0.4, z)}px)`;
+  scrollCue.style.opacity = (1 - smooth(0, 0.15, z)).toFixed(3);
+  canvas.style.opacity = extReady ? '1' : '0';
   header.classList.toggle('is-glass', scrollY > 40);
-  const inHall = z >= 0.98 && hallReady;
-  chapter.classList.toggle('is-on', inHall);
-  progressNav.classList.toggle('is-on', inHall && mode === 'tour');
-  hallUi.classList.toggle('is-on', inHall);
-  canvas.style.pointerEvents = inHall ? 'auto' : 'none';
+  const touring = extReady && z > 0.45;
+  chapter.classList.toggle('is-on', touring);
+  progressNav.classList.remove('is-on');           // replaced by the collection wheel
+  hallUi.classList.toggle('is-on', touring && hallReady);
+  canvas.style.pointerEvents = extReady ? 'auto' : 'none';
 }
 
 function stationParam(t) {
@@ -235,9 +318,9 @@ function updateChapter() {
   if (idx === currentStation) return;
   currentStation = idx;
   const s = STATIONS[idx];
-  chapterStep.textContent = `Room ${ROMAN[idx]} of ${ROMAN[N - 1]}`;
+  chapterStep.textContent = s.outside ? 'The Square' : `Room ${ROMAN[idx - HALL0]} of ${ROMAN[N - 1 - HALL0]}`;
   chapterTitle.textContent = s.id && products.get(s.id) ? products.get(s.id).data.name : s.title;
-  chapterHint.textContent = s.id ? 'Select the piece to see sizes and price · Drag to look around' : (idx === 0 ? 'Scroll to walk the tour · Drag to look around' : 'Drag to look around · Select a glowing piece');
+  chapterHint.textContent = s.id ? 'Select the piece to see sizes and price · Drag to look around' : (s.outside ? 'Scroll to walk on · Drag to look around' : idx === HALL0 ? 'Scroll to walk the tour · Drag to look around' : 'Drag to look around · Select a glowing piece');
   dots.forEach((d, i) => d.setAttribute('aria-current', i === idx ? 'true' : 'false'));
 }
 
@@ -383,7 +466,7 @@ function exitFree() {
   if (mode !== 'free') return;
   // resume the guided tour at the station nearest to where the visitor is standing
   let best = 1, bd = Infinity;
-  STATIONS.forEach((s, i) => { const d = free.pos.distanceTo(new THREE.Vector3(...s.pos)); if (i > 0 && d < bd) { bd = d; best = i; } });
+  STATIONS.forEach((s, i) => { const d = free.pos.distanceTo(new THREE.Vector3(...s.pos)); if (i > HALL0 && d < bd) { bd = d; best = i; } });
   mode = 'tour'; blend = 0;
   snap.pos.copy(camera.position); snap.quat.copy(camera.quaternion);
   document.documentElement.classList.remove('is-exploring');
@@ -492,7 +575,7 @@ canvas.addEventListener('wheel', (e) => {
 }, { passive: false });
 addEventListener('wheel', (e) => {
   if (mode !== 'free' || Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
-  if (e.target.closest && e.target.closest('.drawer, .card, .dock-wrap')) return;
+  if (e.target.closest && e.target.closest('.drawer, .card, .wheel-wrap')) return;
   exitFree();                                    // scrolling always picks the guided tour back up
 }, { passive: true });
 
@@ -506,38 +589,132 @@ document.querySelectorAll('[data-pad]').forEach((b) => {
   b.addEventListener('pointerleave', off); b.addEventListener('pointercancel', off);
 });
 
-/* Product dock + mode switch */
-const dock = $('dock'), modeBtn = $('modeBtn'), hallUi = $('hallUi');
-function buildDock() {
-  dock.innerHTML = '';
-  STATIONS.forEach((s) => {
-    if (!s.id) return;
-    const d = dataFor(s.id);
-    const b = document.createElement('button'); b.type = 'button'; b.className = 'dock-item'; b.dataset.id = s.id;
-    b.innerHTML = '<span class="dock-num"></span><span class="dock-name"></span>';
-    b.querySelector('.dock-num').textContent = s.id.slice(-2);
-    b.querySelector('.dock-name').textContent = d.name;
-    b.addEventListener('click', () => goToProduct(s.id));
-    dock.appendChild(b);
+/* Collection wheel (right) + tour / explore switch (left) */
+const hallUi = $('hallUi'), wheel = $('wheel');
+const modeTour = $('modeTour'), modeFree = $('modeFree'), modeSwitch = $('modeSwitch');
+const wcNum = $('wcNum'), wcName = $('wcName'), wcPrice = $('wcPrice');
+const SVGNS = 'http://www.w3.org/2000/svg';
+const thumbs = {};                       // product id -> data URL rendered from the 3D model
+let wheelHover = null;
+
+function sectorPath(a0, a1, r0, r1) {
+  const p = (r, a) => `${(r * Math.sin(a)).toFixed(2)} ${(-r * Math.cos(a)).toFixed(2)}`;
+  const large = a1 - a0 > Math.PI ? 1 : 0;
+  return `M${p(r1, a0)} A${r1} ${r1} 0 ${large} 1 ${p(r1, a1)} L${p(r0, a1)} A${r0} ${r0} 0 ${large} 0 ${p(r0, a0)} Z`;
+}
+function buildDock() {                   // builds the wheel; name kept for the loaders that call it
+  const ids = STATIONS.filter((s) => s.id).map((s) => s.id);
+  const n = ids.length, gap = 0.035, R0 = 58, R1 = 116;
+  wheel.innerHTML = '';
+  const defs = document.createElementNS(SVGNS, 'defs'); wheel.appendChild(defs);
+  const ring = document.createElementNS(SVGNS, 'circle');
+  ring.setAttribute('r', '118.5'); ring.setAttribute('class', 'wheel-rim'); wheel.appendChild(ring);
+  ids.forEach((id, i) => {
+    const a0 = (i / n) * Math.PI * 2 + gap / 2, a1 = ((i + 1) / n) * Math.PI * 2 - gap / 2, am = (a0 + a1) / 2;
+    const d = dataFor(id);
+    const clip = document.createElementNS(SVGNS, 'clipPath'); clip.id = `wclip-${id}`;
+    const cp = document.createElementNS(SVGNS, 'path'); cp.setAttribute('d', sectorPath(a0, a1, R0, R1)); clip.appendChild(cp); defs.appendChild(clip);
+    const g = document.createElementNS(SVGNS, 'g');
+    g.setAttribute('class', 'wheel-seg'); g.setAttribute('tabindex', '0'); g.setAttribute('role', 'button');
+    g.setAttribute('aria-label', `${d.name}, ${d.price}`); g.dataset.id = id;
+    const bg = document.createElementNS(SVGNS, 'path'); bg.setAttribute('d', sectorPath(a0, a1, R0, R1)); bg.setAttribute('class', 'seg-bg'); g.appendChild(bg);
+    const img = document.createElementNS(SVGNS, 'image');
+    const cx = Math.sin(am) * (R0 + R1) / 2, cy = -Math.cos(am) * (R0 + R1) / 2, S = 74;
+    img.setAttribute('x', (cx - S / 2).toFixed(1)); img.setAttribute('y', (cy - S / 2).toFixed(1));
+    img.setAttribute('width', S); img.setAttribute('height', S);
+    img.setAttribute('preserveAspectRatio', 'xMidYMid slice');
+    img.setAttribute('clip-path', `url(#wclip-${id})`); img.setAttribute('class', 'seg-img');
+    if (thumbs[id]) img.setAttribute('href', thumbs[id]);
+    g.appendChild(img);
+    const edge = document.createElementNS(SVGNS, 'path'); edge.setAttribute('d', sectorPath(a0, a1, R0, R1)); edge.setAttribute('class', 'seg-edge'); g.appendChild(edge);
+    const num = document.createElementNS(SVGNS, 'text');
+    num.setAttribute('x', (Math.sin(am) * (R1 - 9)).toFixed(1)); num.setAttribute('y', (-Math.cos(am) * (R1 - 9) + 2.5).toFixed(1));
+    num.setAttribute('class', 'seg-num'); num.textContent = id.slice(-2); g.appendChild(num);
+    const go = () => { goToProduct(id); };
+    g.addEventListener('click', go);
+    g.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+    g.addEventListener('pointerenter', () => { wheelHover = id; showWheelCenter(id); });
+    g.addEventListener('pointerleave', () => { wheelHover = null; showWheelCenter(null); });
+    g.addEventListener('focus', () => { wheelHover = id; showWheelCenter(id); });
+    g.addEventListener('blur', () => { wheelHover = null; showWheelCenter(null); });
+    wheel.appendChild(g);
+  });
+  showWheelCenter(null);
+}
+function showWheelCenter(id) {
+  const shown = id || currentProductId();
+  if (!shown) { wcNum.textContent = 'The Collection'; wcName.textContent = 'Select a piece'; wcPrice.textContent = ''; return; }
+  const d = dataFor(shown);
+  wcNum.textContent = `No. ${shown.slice(-2)}`; wcName.textContent = d.name; wcPrice.textContent = d.price;
+}
+function currentProductId() {
+  return openId || (mode === 'tour' && STATIONS[Math.round(curT)] ? STATIONS[Math.round(curT)].id || null : null);
+}
+let lastMarked;
+function markDock() {
+  const id = currentProductId();
+  if (id === lastMarked) return; lastMarked = id;
+  wheel.querySelectorAll('.wheel-seg').forEach((g) => g.classList.toggle('is-current', g.dataset.id === id));
+  if (!wheelHover) showWheelCenter(null);
+}
+
+/* Product pictures for the wheel, rendered from the 3D hall itself */
+function renderThumbs() {
+  if (!renderer) return;
+  const SIZE = 192;
+  const rt = new THREE.WebGLRenderTarget(SIZE, SIZE, { colorSpace: THREE.SRGBColorSpace });
+  const cam = new THREE.PerspectiveCamera(30, 1, 0.02, 60);
+  const px = new Uint8Array(SIZE * SIZE * 4);
+  const cv = document.createElement('canvas'); cv.width = cv.height = SIZE;
+  const ctx = cv.getContext('2d'); const imgData = ctx.createImageData(SIZE, SIZE);
+  const sunI = sun.intensity, skyI = skyFill.intensity, extVis = extRoot ? extRoot.visible : false;
+  sun.intensity = 0; skyFill.intensity = 0; if (extRoot) extRoot.visible = false;
+  const halos = []; products.forEach((p) => { halos.push([p.halo, p.halo.visible]); p.halo.visible = false; });
+  products.forEach((p, id) => {
+    const st = STATIONS.find((s) => s.id === id);
+    const box = new THREE.Box3().setFromObject(p.root);
+    const sphere = box.getBoundingSphere(new THREE.Sphere());
+    const from = st ? new THREE.Vector3(...st.pos) : sphere.center.clone().add(new THREE.Vector3(0, 0.5, 3));
+    const dir = from.clone().sub(sphere.center).setY(0.25 * from.clone().sub(sphere.center).length()).normalize();
+    const dist = sphere.radius / Math.sin(THREE.MathUtils.degToRad(cam.fov / 2)) * 0.7;
+    cam.position.copy(sphere.center).addScaledVector(dir, dist);
+    cam.lookAt(sphere.center); cam.updateMatrixWorld();
+    renderer.setRenderTarget(rt); renderer.render(scene, cam);
+    renderer.readRenderTargetPixels(rt, 0, 0, SIZE, SIZE, px);
+    for (let y = 0; y < SIZE; y++) imgData.data.set(px.subarray((SIZE - 1 - y) * SIZE * 4, (SIZE - y) * SIZE * 4), y * SIZE * 4);
+    ctx.putImageData(imgData, 0, 0);
+    thumbs[id] = cv.toDataURL('image/jpeg', 0.85);
+  });
+  renderer.setRenderTarget(null); rt.dispose();
+  sun.intensity = sunI; skyFill.intensity = skyI; if (extRoot) extRoot.visible = extVis;
+  halos.forEach(([h, v]) => { h.visible = v; });
+  wheel.querySelectorAll('.wheel-seg').forEach((g) => {
+    const im = g.querySelector('image'); if (thumbs[g.dataset.id]) im.setAttribute('href', thumbs[g.dataset.id]);
   });
 }
-modeBtn.addEventListener('click', () => { if (mode === 'free') exitFree(); else enterFree(); });
+
+/* Two-option switch: Guided Tour | Explore Freely */
+modeTour.addEventListener('click', () => { if (mode === 'free') exitFree(); });
+modeFree.addEventListener('click', () => {
+  if (mode === 'free') return;
+  if (heroT < 0.98) { pendingFree = true; goToStation(HALL0); }   // still in the square: walk in first
+  else enterFree();
+});
+let pendingFree = false;
 function syncModeUi() {
   const exploring = mode === 'free';
-  modeBtn.textContent = exploring ? 'Return to guided tour' : 'Explore freely';
-  modeBtn.setAttribute('aria-pressed', String(exploring));
+  modeTour.setAttribute('aria-checked', String(!exploring));
+  modeFree.setAttribute('aria-checked', String(exploring));
+  modeSwitch.classList.toggle('is-free', exploring);
   $('movePad').hidden = !exploring;
   if (exploring) {
     chapterStep.textContent = 'Free exploring';
     chapterTitle.textContent = 'The Great Hall';
     chapterHint.textContent = matchMedia('(pointer: coarse)').matches
-      ? 'Drag to look around · Tap the floor to walk there · Return to the tour below'
+      ? 'Drag to look around · Tap the floor to walk there'
       : 'Drag to look around · W A S D or arrows to walk · Click the floor to walk there · Scroll to continue the tour';
   } else currentStation = -1;
-}
-function markDock() {
-  const id = openId || (mode === 'tour' && STATIONS[Math.round(curT)] ? STATIONS[Math.round(curT)].id : null);
-  [...dock.children].forEach((c) => c.setAttribute('aria-current', String(c.dataset.id === id)));
+  lastMarked = undefined;
 }
 
 /* ------------------------------ Product card ------------------------------ */
@@ -694,6 +871,72 @@ addEventListener('resize', resize);
 resize();
 curT = targetT;
 
+/* Bronze doors: closed while you cross the square, they swing open as you reach the porch. */
+const doors = { left: null, right: null, open: 0 };
+function buildDoors(root) {
+  const old = root.getObjectByName('Bronze_Doors');
+  let bronze = null;
+  if (old) { old.traverse((o) => { if (o.isMesh && !bronze) bronze = o.material; }); old.visible = false; }
+  bronze = bronze || new THREE.MeshStandardMaterial({ color: 0x5a3a1e, metalness: 1, roughness: 0.35 });
+  const gold = new THREE.MeshStandardMaterial({ color: 0xd8b048, metalness: 1, roughness: 0.22 });
+  const dark = bronze.clone(); dark.color = new THREE.Color(0x3a2412);
+  const W = 2.5, H = 8, T = 0.16;
+  function leaf(sign) {
+    const pivot = new THREE.Group();
+    pivot.position.set(-sign * W, 2.0, -0.85);           // hinge at the outer edge of the doorway
+    const g = new THREE.Group(); g.position.x = sign * W / 2; pivot.add(g);
+    const add = (geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); g.add(m); return m; };
+    add(new THREE.BoxGeometry(W, H, T), bronze, 0, H / 2, 0);
+    [[1.6, 2.6], [4.6, 2.8], [7.1, 1.2]].forEach(([cy, ph]) => {
+      [-1, 1].forEach((side) => {
+        add(new THREE.BoxGeometry(W - 0.6, ph, 0.05), dark, 0, cy, side * (T / 2 + 0.02));
+        const fr = new THREE.BoxGeometry(W - 0.5, 0.05, 0.04);
+        add(fr, gold, 0, cy + ph / 2, side * (T / 2 + 0.04)); add(fr, gold, 0, cy - ph / 2, side * (T / 2 + 0.04));
+        const fv = new THREE.BoxGeometry(0.05, ph, 0.04);
+        add(fv, gold, -(W - 0.5) / 2, cy, side * (T / 2 + 0.04)); add(fv, gold, (W - 0.5) / 2, cy, side * (T / 2 + 0.04));
+        const boss = new THREE.SphereGeometry(0.09, 16, 10);
+        add(boss, gold, 0, cy, side * (T / 2 + 0.06));
+      });
+    });
+    const ring = new THREE.TorusGeometry(0.16, 0.025, 8, 24);
+    [-1, 1].forEach((side) => { add(ring, gold, sign * (W / 2 - 0.35), 4.2, side * (T / 2 + 0.1)); });
+    scene.add(pivot);
+    return pivot;
+  }
+  doors.left = leaf(1); doors.right = leaf(-1);
+}
+function updateDoors(dt) {
+  if (!doors.left) return;
+  // open while walking from the porch to the entrance; stay open once inside or when exploring
+  const want = mode === 'free' ? 1 : smooth(HALL0 - 0.8, HALL0 - 0.25, curT);
+  doors.open += (want - doors.open) * (reduceMotion ? 1 : Math.min(1, dt * 4));
+  const a = doors.open * Math.PI * 0.6;
+  doors.left.rotation.y = a; doors.right.rotation.y = -a;
+}
+
+/* Living details: flowing water, waving flags, drifting clouds, day light fading indoors. */
+function animateWorld(dt, t) {
+  updateDoors(dt);
+  if (!reduceMotion) {
+    animated.water.forEach((w) => { w.map.offset.x += w.speed[0] * dt; w.map.offset.y -= w.speed[1] * dt; });
+    animated.flags.forEach((f) => {
+      const a = f.mesh.geometry.attributes.position;
+      for (let i = 0; i < a.count; i++) {
+        const x = f.base[i * 3] - f.minX, y = f.base[i * 3 + 1];
+        a.array[i * 3 + 2] = f.base[i * 3 + 2] + Math.sin(x * 2.2 - t * 3.4 + y * 0.6) * 0.11 * x;
+        a.array[i * 3 + 1] = y - 0.03 * x * x;
+      }
+      a.needsUpdate = true;
+    });
+    if (animated.sky) animated.sky.rotation.y += dt * 0.0035;
+  }
+  const outside = smooth(-4, 5, camera.position.z);      // 1 in the square, 0 inside the hall
+  sun.intensity = 2.4 * outside; skyFill.intensity = 0.75 * outside;
+  renderer.toneMappingExposure = 0.82 + 0.1 * outside;
+  if (extRoot) extRoot.visible = camera.position.z > -14;
+  treeMeshes.forEach((m) => { m.visible = camera.position.z > -6; });
+}
+
 const clock = new THREE.Clock();
 const look = new THREE.Vector3();
 const tourQuat = new THREE.Quaternion();
@@ -704,7 +947,7 @@ function frame() {
   const t = clock.elapsedTime;
   applyHero();
   curT += (targetT - curT) * (reduceMotion ? 1 : Math.min(1, dt * 3.2));
-  if (heroT > 0.6 && renderer && hallReady) {
+  if (renderer && extReady) {
     if (mode === 'free') {
       updateFree(rawDt);
     } else {
@@ -737,6 +980,7 @@ function frame() {
       }
     }
     markDock();
+    animateWorld(dt, t);
     products.forEach((p, id) => {
       const target = (id === hoverId || id === openId) ? 1 : 0;
       p.hover += (target - p.hover) * Math.min(1, dt * 6);
@@ -746,12 +990,13 @@ function frame() {
       p.halo.scale.set(s, s, 1);
     });
     renderer.render(scene, camera);
-    if (heroT >= 0.98 && mode === 'tour') updateChapter();
+    if (targetT > 0.45 && mode === 'tour') updateChapter();
     if (pendingOpen && Math.abs(curT - pendingOpen.station) < 0.04) { openCard(pendingOpen.id); pendingOpen = null; }
+    if (pendingFree && Math.abs(curT - HALL0) < 0.04) { pendingFree = false; enterFree(); }
   }
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
 
 // Small hook for testing and for wiring a store later.
-window.palais = { openCard, closeCard, goToStation, goToProduct, enterFree, exitFree, products, camera };
+window.palais = { openCard, closeCard, goToStation, goToProduct, enterFree, exitFree, products, camera, get ready() { return extReady && hallReady; } };

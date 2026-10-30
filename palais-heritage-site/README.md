@@ -26,10 +26,11 @@ An internet connection is needed for the fonts and three.js (loaded from Google 
 
 ## Getting around the hall
 
-- **Guided tour:** scroll to walk from stop to stop.
-- **Explore freely:** drag anywhere to look in any direction. Walk with W A S D or the arrow keys, the on-screen arrows, or the mouse wheel, or click the floor to walk to that spot. Dragging inside the hall switches to this mode on its own.
-- **Go to any piece:** the bar at the bottom lists every product. Pick one to fly straight to it, and its card opens on arrival. The menu's Collection list does the same.
-- **Return to guided tour** picks the tour back up at the stop nearest to where you are standing.
+- **Scroll** walks the guided tour from stop to stop.
+- **Drag** looks around in any direction at any time, on the tour or while exploring. It eases and carries a little momentum. A two-finger sideways swipe on a trackpad also turns the view.
+- **Walk freely** with W A S D or the arrow keys, the on-screen arrows, or by clicking the floor. Scrolling picks the tour back up from the nearest stop.
+- **Go to any piece:** the Collection wheel on the right is split into one slice per product, each showing that piece. Hover a slice to see its name and price in the centre; click it to fly there and open its card. The menu's Collection list does the same.
+- **Guided Tour | Explore Freely:** the two-option switch at the bottom left changes how you move.
 
 ## Edit the products
 

@@ -26,16 +26,10 @@
     <div class="hero-frame">
       <div class="hero-zoom" id="heroZoom">
         <img class="hero-img" src="assets/hero.jpg" alt="">
-        <div class="doors" id="doors">
-          <div class="door door-l" id="doorL"></div>
-          <div class="door door-r" id="doorR"></div>
-          <div class="door-glow" id="doorGlow"></div>
-        </div>
         <div class="hero-shade" id="heroShade"></div>
       </div>
     </div>
     <canvas id="hall"></canvas>
-    <div class="flash" id="flash"></div>
   </div>
 
   <!-- Header -->
@@ -80,7 +74,7 @@
   <div class="scroll-cue" id="scrollCue">
     <span>Scroll to Enter the Great Hall</span>
     <span class="cue-line"></span>
-    <span class="load-note" id="loadNote">Preparing the Great Hall</span>
+    <span class="load-note" id="loadNote">Preparing the square</span>
   </div>
 
   <!-- In-hall chapter caption + station dots -->
@@ -150,8 +144,8 @@
       <button class="drawer-close" type="button" data-close aria-label="Close menu">×</button>
     </div>
     <div class="menu-links">
-      <button type="button" data-goto="0">The Entrance</button>
-      <button type="button" data-goto="1">The Great Hall</button>
+      <button type="button" data-goto="0">The Square</button>
+      <button type="button" data-goto="5">The Great Hall</button>
       <button type="button" id="aboutBtn">About</button>
       <button type="button" id="contactBtn">Contact</button>
     </div>
