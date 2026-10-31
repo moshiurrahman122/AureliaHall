@@ -1,0 +1,12 @@
+# Only the website is published; the Blender files and source textures stay out of the deployment.
+townhall.blend
+townhall.blend1
+townhall.glb
+/assets
+/previews
+/textures
+/web
+.DS_Store
+palais-heritage-site/assets/tree.glb
+palais-heritage-site/assets/trees.json
+palais-heritage-site/README.md
