@@ -1137,4 +1137,7 @@ requestAnimationFrame(frame);
   go();
 })();
 
-window.palais = { openCard, closeCard, goToStation, goToProduct, enterFree, exitFree, products, camera, get ready() { return extReady && hallReady; } };
+window.palais = { openCard, closeCard, goToStation, goToProduct, enterFree, exitFree, returnToLanding, addLook, stationScrollY, products, camera, cart,
+  HALL0, STATIONS, get mode() { return mode; }, get ready() { return extReady && hallReady; } };
+/* Showreel: add ?demo to the address and the site walks itself through the whole journey (for screen recordings). */
+if (new URLSearchParams(location.search).has('demo')) import('./demo.js').then((m) => m.runDemo(window.palais)).catch(() => {});
