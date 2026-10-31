@@ -3,22 +3,13 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
-/* ------------------------------------------------------------------ *
- * Catalogue. Names, prices and sizes are also stored on each product
- * inside hall.glb (Blender custom properties); the model's values win.
- * ------------------------------------------------------------------ */
-const PRODUCTS = {
-  product_01: { name: 'Velvet Embroidered Gown', price: '$2,850', sizes: 'XS, S, M, L, XL' },
-  product_02: { name: 'Burgundy Leather Top-Handle Bag', price: '$2,450', sizes: 'One size' },
-  product_03: { name: 'Diamond Cascade Necklace', price: '$12,800', sizes: 'One size' },
-  product_04: { name: 'Gold Satin Crystal Pumps', price: '$1,250', sizes: 'EU 36, 37, 38, 39, 40, 41' },
-  product_05: { name: 'Gold Skeleton Watch', price: '$9,400', sizes: 'One size' },
-  product_06: { name: 'Navy Velvet Embroidered Blazer', price: '$1,980', sizes: 'S, M, L, XL' },
-  product_07: { name: 'Navy Velvet Crest Loafers', price: '$890', sizes: 'EU 40, 41, 42, 43, 44, 45' },
-  product_08: { name: 'Emerald Chandelier Earrings', price: '$6,200', sizes: 'One size' },
-  product_09: { name: 'Crystal Atomiser Parfum', price: '$380', sizes: '50 ml, 100 ml' },
-  product_10: { name: 'Baroque Silk Twill Scarf', price: '$420', sizes: '90 × 90 cm' },
-};
+import { PRODUCTS as CATALOG, PRODUCT_LIST, sizesOf } from './catalog.js';
+import { CONTACT } from './shop-config.js';
+import { cart, mountCart } from './shop.js';
+
+/* Catalogue lives in catalog.js (shared with the Collection and product pages).
+   Names, prices and sizes are also stored on each product inside hall.glb; the model's values win. */
+const PRODUCTS = Object.fromEntries(Object.entries(CATALOG).map(([id, p]) => [id, { name: p.name, price: p.price, sizes: p.sizes }]));
 
 /* Camera stations (three.js coordinates, metres). The first ones walk across the square outside. */
 const OUTSIDE = [
@@ -34,15 +25,15 @@ const STATIONS = [
   { title: 'The Great Hall',        pos: [0, 5.2, -3.5],     look: [0, 9.0, -34] },
   { title: 'Velvet Embroidered Gown', id: 'product_01', pos: [1.8, 3.9, -10.0], look: [0, 3.4, -15] },
   { title: 'Navy Velvet Embroidered Blazer', id: 'product_06', pos: [3.0, 3.7, -4.4], look: [6.5, 3.4, -8] },
-  { title: 'Baroque Silk Twill Scarf', id: 'product_10', pos: [3.3, 3.7, -13.5], look: [6.5, 3.3, -17] },
-  { title: 'Burgundy Leather Top-Handle Bag', id: 'product_02', pos: [-3.3, 3.4, -14.1], look: [-6.5, 2.6, -17] },
-  { title: 'Diamond Cascade Necklace', id: 'product_03', pos: [-14.2, 4.0, -12], look: [-16.45, 3.85, -12] },
-  { title: 'Gold Skeleton Watch', id: 'product_05', pos: [-14.2, 3.9, -24], look: [-16.45, 3.75, -24] },
-  { title: 'Emerald Chandelier Earrings', id: 'product_08', pos: [-14.2, 3.9, -36], look: [-16.45, 3.8, -36] },
+  { title: 'Baroque Silk Twill Scarf', id: 'product_10', pos: [3.3, 3.7, -13.5], look: [6.5, 2.95, -17] },
+  { title: 'Burgundy Leather Top-Handle Bag', id: 'product_02', pos: [-3.3, 3.4, -14.1], look: [-6.5, 3.2, -17] },
+  { title: 'Ruby Cascade Necklace', id: 'product_03', pos: [-14.0, 4.1, -12], look: [-16.45, 4.0, -12] },
+  { title: 'Gold Dress Watch', id: 'product_05', pos: [-14.2, 3.9, -24], look: [-16.45, 3.9, -24] },
+  { title: 'Ruby Chandelier Earrings', id: 'product_08', pos: [-14.2, 3.9, -36], look: [-16.45, 3.85, -36] },
   { title: 'The Grand Staircase',   pos: [0, 5.0, -26.5],    look: [0, 8.5, -46] },
-  { title: 'Navy Velvet Crest Loafers', id: 'product_07', pos: [14.2, 3.8, -36], look: [16.45, 3.6, -36] },
-  { title: 'Crystal Atomiser Parfum', id: 'product_09', pos: [14.2, 3.9, -24], look: [16.45, 3.75, -24] },
-  { title: 'Gold Satin Crystal Pumps', id: 'product_04', pos: [14.2, 3.9, -12], look: [16.45, 3.7, -12] },
+  { title: 'Navy Velvet Crest Loafers', id: 'product_07', pos: [14.2, 3.8, -36], look: [16.45, 3.8, -36] },
+  { title: 'Crystal Flacon Parfum', id: 'product_09', pos: [14.2, 3.9, -24], look: [16.45, 3.9, -24] },
+  { title: 'Gold Satin Crystal Pumps', id: 'product_04', pos: [14.2, 3.9, -12], look: [16.45, 3.8, -12] },
 ];
 const N = STATIONS.length;
 const ROMAN = ['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII','XIII','XIV','XV'];
@@ -74,7 +65,7 @@ try {
 }
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0f1116);
-const camera = new THREE.PerspectiveCamera(52, innerWidth / innerHeight, 0.05, 1600);
+const camera = new THREE.PerspectiveCamera(52, innerWidth / innerHeight, 0.2, 1600);
 camera.position.set(...OUTSIDE[0].pos); camera.lookAt(...OUTSIDE[0].look);
 
 if (renderer) {
@@ -112,6 +103,14 @@ spotOn([0, 3, -15], [0, 10, -11], 180);
 spotOn([6.5, 3, -8], [4, 9, -6]);
 spotOn([6.5, 3, -17], [4, 9, -15]);
 spotOn([-6.5, 2.6, -17], [-4, 9, -15]);
+// One warm spot per alcove, angled down from the hall side onto the piece on display.
+[-12, -24, -36].forEach((z) => {
+  [-1, 1].forEach((side) => {
+    const s = new THREE.SpotLight(0xffe6c4, 80, 9, Math.PI / 6.5, 0.55, 1.4);
+    s.position.set(side * 14.6, 7.4, z + 0.6); s.target.position.set(side * 16.45, 3.75, z);
+    scene.add(s, s.target);
+  });
+});
 
 /* ------------------------------ Model ------------------------------ */
 const products = new Map();      // id -> { root, meshes, halo, center, data }
@@ -144,6 +143,28 @@ function tuneMaterials(root) {
     mats.forEach((m) => {
       if ('envMapIntensity' in m) m.envMapIntensity = m.metalness > 0.5 ? 0.8 : 0.18;
       if (m.transparent) m.depthWrite = false;
+      // Neon gold alcove strips: keep the colour vivid, and let the soft glow behind them add light.
+      // Perfume: thick clear crystal over amber parfum, refracting what is behind it.
+      if (m.name === 'Parfum_Glass2' && m.isMeshPhysicalMaterial) {
+        m.transmission = 1; m.thickness = 0.05; m.ior = 1.52; m.roughness = 0.02; m.metalness = 0;
+        m.specularIntensity = 1; m.clearcoat = 1; m.clearcoatRoughness = 0.02; m.envMapIntensity = 1.4;
+        m.color.set(0xffffff); m.attenuationColor.set(0xf4f1ea); m.attenuationDistance = 0.6;
+        m.transparent = false; m.depthWrite = true;
+      }
+      if (m.name === 'Parfum_Liquid2' && m.isMeshPhysicalMaterial) {
+        m.transmission = 0.92; m.thickness = 0.1; m.ior = 1.36; m.roughness = 0.04; m.metalness = 0;
+        m.color.set(0xf0b36a); m.attenuationColor.set(0xc8641c); m.attenuationDistance = 0.12; m.envMapIntensity = 1.2;
+        m.transparent = false; m.depthWrite = true;
+      }
+      if (m.name === 'Parfum_Gold' || m.name === 'Parfum_Gold_Brushed') m.envMapIntensity = 1.3;
+      if (m.name === 'Velvet_Bust' && !m.userData.lifted) { m.color.multiplyScalar(1.6); m.userData.lifted = true; }
+      if (m.name === 'Alcove_Neon') { m.toneMapped = false; m.emissiveIntensity = 1.6; }
+      if (m.name === 'Neon_Glow') {
+        m.transparent = true; m.depthWrite = false; m.toneMapped = false;
+        m.blending = THREE.AdditiveBlending; m.color.set(0x000000);
+        m.emissive.set(0xffae22); m.emissiveIntensity = 0.9;
+        if (m.map) { m.alphaMap = null; } o.renderOrder = 5;
+      }
     });
   });
 }
@@ -171,6 +192,19 @@ function loadOutside() {
           }
           if (n === 'Sky_Dome') { m.toneMapped = false; m.fog = false; }
         });
+        // Street lamps on the square: neon gold glass that stays gold in daylight.
+        if (Array.isArray(o.material)) {
+          o.material = o.material.map((m) => {
+            if (m.name !== 'Alcove_Neon') return m;
+            const g = m.clone(); g.name = 'Lamp_Neon_Gold';
+            g.color.set(0x1a1004); g.emissive.setRGB(1, 0.54, 0.07); g.emissiveIntensity = 1.15; g.toneMapped = false;
+            return g;
+          });
+        } else if (o.material && o.material.name === 'Alcove_Neon') {
+          const g = o.material.clone(); g.name = 'Lamp_Neon_Gold';
+          g.color.set(0x1a1004); g.emissive.setRGB(1, 0.54, 0.07); g.emissiveIntensity = 1.15; g.toneMapped = false;
+          o.material = g;
+        }
         if (o.name.startsWith('Flag_')) {
           const pos = o.geometry.attributes.position;
           o.geometry = o.geometry.clone();
@@ -302,7 +336,7 @@ function applyHero() {
   const touring = extReady && z > 0.45;
   chapter.classList.toggle('is-on', touring);
   progressNav.classList.remove('is-on');           // replaced by the collection wheel
-  hallUi.classList.toggle('is-on', touring && hallReady);
+  if (hallUi) hallUi.classList.toggle('is-on', touring && hallReady);
   canvas.style.pointerEvents = extReady ? 'auto' : 'none';
 }
 
@@ -592,7 +626,7 @@ document.querySelectorAll('[data-pad]').forEach((b) => {
 /* Collection wheel (right) + tour / explore switch (left) */
 const hallUi = $('hallUi'), wheel = $('wheel');
 const modeTour = $('modeTour'), modeFree = $('modeFree'), modeSwitch = $('modeSwitch');
-const wcNum = $('wcNum'), wcName = $('wcName'), wcPrice = $('wcPrice');
+const wcNum = null, wcName = null, wcPrice = null;   // centre now holds the mode switch
 const SVGNS = 'http://www.w3.org/2000/svg';
 const thumbs = {};                       // product id -> data URL rendered from the 3D model
 let wheelHover = null;
@@ -603,6 +637,7 @@ function sectorPath(a0, a1, r0, r1) {
   return `M${p(r1, a0)} A${r1} ${r1} 0 ${large} 1 ${p(r1, a1)} L${p(r0, a1)} A${r0} ${r0} 0 ${large} 0 ${p(r0, a0)} Z`;
 }
 function buildDock() {                   // builds the wheel; name kept for the loaders that call it
+  if (!wheel) return;
   const ids = STATIONS.filter((s) => s.id).map((s) => s.id);
   const n = ids.length, gap = 0.035, R0 = 58, R1 = 116;
   wheel.innerHTML = '';
@@ -617,6 +652,7 @@ function buildDock() {                   // builds the wheel; name kept for the 
     const g = document.createElementNS(SVGNS, 'g');
     g.setAttribute('class', 'wheel-seg'); g.setAttribute('tabindex', '0'); g.setAttribute('role', 'button');
     g.setAttribute('aria-label', `${d.name}, ${d.price}`); g.dataset.id = id;
+    const tip = document.createElementNS(SVGNS, 'title'); tip.textContent = d.name; g.appendChild(tip);
     const bg = document.createElementNS(SVGNS, 'path'); bg.setAttribute('d', sectorPath(a0, a1, R0, R1)); bg.setAttribute('class', 'seg-bg'); g.appendChild(bg);
     const img = document.createElementNS(SVGNS, 'image');
     const cx = Math.sin(am) * (R0 + R1) / 2, cy = -Math.cos(am) * (R0 + R1) / 2, S = 74;
@@ -629,7 +665,7 @@ function buildDock() {                   // builds the wheel; name kept for the 
     const edge = document.createElementNS(SVGNS, 'path'); edge.setAttribute('d', sectorPath(a0, a1, R0, R1)); edge.setAttribute('class', 'seg-edge'); g.appendChild(edge);
     const num = document.createElementNS(SVGNS, 'text');
     num.setAttribute('x', (Math.sin(am) * (R1 - 9)).toFixed(1)); num.setAttribute('y', (-Math.cos(am) * (R1 - 9) + 2.5).toFixed(1));
-    num.setAttribute('class', 'seg-num'); num.textContent = id.slice(-2); g.appendChild(num);
+    void num;
     const go = () => { goToProduct(id); };
     g.addEventListener('click', go);
     g.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
@@ -642,6 +678,7 @@ function buildDock() {                   // builds the wheel; name kept for the 
   showWheelCenter(null);
 }
 function showWheelCenter(id) {
+  if (!wcNum) return;
   const shown = id || currentProductId();
   if (!shown) { wcNum.textContent = 'The Collection'; wcName.textContent = 'Select a piece'; wcPrice.textContent = ''; return; }
   const d = dataFor(shown);
@@ -653,7 +690,7 @@ function currentProductId() {
 let lastMarked;
 function markDock() {
   const id = currentProductId();
-  if (id === lastMarked) return; lastMarked = id;
+  if (id === lastMarked || !wheel) return; lastMarked = id;
   wheel.querySelectorAll('.wheel-seg').forEach((g) => g.classList.toggle('is-current', g.dataset.id === id));
   if (!wheelHover) showWheelCenter(null);
 }
@@ -688,14 +725,14 @@ function renderThumbs() {
   renderer.setRenderTarget(null); rt.dispose();
   sun.intensity = sunI; skyFill.intensity = skyI; if (extRoot) extRoot.visible = extVis;
   halos.forEach(([h, v]) => { h.visible = v; });
-  wheel.querySelectorAll('.wheel-seg').forEach((g) => {
+  if (wheel) wheel.querySelectorAll('.wheel-seg').forEach((g) => {
     const im = g.querySelector('image'); if (thumbs[g.dataset.id]) im.setAttribute('href', thumbs[g.dataset.id]);
   });
 }
 
 /* Two-option switch: Guided Tour | Explore Freely */
-modeTour.addEventListener('click', () => { if (mode === 'free') exitFree(); });
-modeFree.addEventListener('click', () => {
+if (modeTour) modeTour.addEventListener('click', () => { if (mode === 'free') exitFree(); });
+if (modeFree) modeFree.addEventListener('click', () => {
   if (mode === 'free') return;
   if (heroT < 0.98) { pendingFree = true; goToStation(HALL0); }   // still in the square: walk in first
   else enterFree();
@@ -703,10 +740,11 @@ modeFree.addEventListener('click', () => {
 let pendingFree = false;
 function syncModeUi() {
   const exploring = mode === 'free';
-  modeTour.setAttribute('aria-checked', String(!exploring));
-  modeFree.setAttribute('aria-checked', String(exploring));
-  modeSwitch.classList.toggle('is-free', exploring);
-  $('movePad').hidden = !exploring;
+  if (modeSwitch) {
+    modeTour.setAttribute('aria-checked', String(!exploring));
+    modeFree.setAttribute('aria-checked', String(exploring));
+    modeSwitch.classList.toggle('is-free', exploring);
+  }
   if (exploring) {
     chapterStep.textContent = 'Free exploring';
     chapterTitle.textContent = 'The Great Hall';
@@ -728,7 +766,7 @@ function openCard(id) {
   cardRef.textContent = `No. ${id.slice(-2)}`;
   cardName.textContent = p.data.name;
   cardPrice.textContent = p.data.price;
-  const sizes = String(p.data.sizes).split(',').map((s) => s.trim()).filter(Boolean);
+  const sizes = sizesOf(p.data);
   chosenSize = sizes.length === 1 ? sizes[0] : null;
   cardSizes.innerHTML = '';
   sizes.forEach((s) => {
@@ -755,64 +793,18 @@ function closeCard() {
 }
 $('cardClose').addEventListener('click', closeCard);
 
-/* ------------------------------ Cart ------------------------------ */
-const CART_KEY = 'palais-heritage-cart';
-let cart = [];
-try { cart = JSON.parse(localStorage.getItem(CART_KEY) || '[]') || []; } catch (e) { cart = []; }
-const saveCart = () => { try { localStorage.setItem(CART_KEY, JSON.stringify(cart)); } catch (e) { /* storage unavailable */ } };
-const priceNum = (p) => Number(String(p).replace(/[^0-9.]/g, '')) || 0;
-const money = (n) => '$' + n.toLocaleString('en-US');
+/* ------------------------------ Cart (shared with every page: shop.js) ------------------------------ */
 const dataFor = (id) => (products.get(id) || {}).data || PRODUCTS[id];
 
 addBtn.addEventListener('click', () => {
   if (!openId || !chosenSize) return;
-  const line = cart.find((l) => l.id === openId && l.size === chosenSize);
-  if (line) line.qty += 1; else cart.push({ id: openId, size: chosenSize, qty: 1 });
-  saveCart(); renderCart();
+  cart.add(openId, chosenSize);
   showToast(`${dataFor(openId).name} added`);
   closeCard();
 });
-
-const cartLines = $('cartLines'), cartCount = $('cartCount'), subtotalEl = $('subtotal');
-function renderCart() {
-  cartLines.innerHTML = '';
-  let count = 0, total = 0;
-  if (!cart.length) {
-    const p = document.createElement('p'); p.className = 'cart-empty';
-    p.textContent = 'Nothing selected yet. Walk through the Great Hall and select a piece to add it here.';
-    cartLines.appendChild(p);
-  }
-  cart.forEach((l, idx) => {
-    const d = dataFor(l.id); if (!d) return;
-    count += l.qty; total += priceNum(d.price) * l.qty;
-    const row = document.createElement('div'); row.className = 'cart-line';
-    row.innerHTML = `
-      <div class="cart-line-name"></div>
-      <div class="cart-line-price"></div>
-      <div class="cart-line-meta"><span class="sz"></span>
-        <span class="qty"><button type="button" aria-label="Decrease quantity">−</button><span></span><button type="button" aria-label="Increase quantity">+</button></span>
-      </div>
-      <button class="cart-remove" type="button">Remove</button>`;
-    row.querySelector('.cart-line-name').textContent = d.name;
-    row.querySelector('.cart-line-price').textContent = money(priceNum(d.price) * l.qty);
-    row.querySelector('.sz').textContent = `Size ${l.size}`;
-    const [minus, plus] = row.querySelectorAll('.qty button');
-    row.querySelector('.qty span').textContent = l.qty;
-    minus.addEventListener('click', () => { l.qty -= 1; if (l.qty <= 0) cart.splice(idx, 1); saveCart(); renderCart(); });
-    plus.addEventListener('click', () => { l.qty += 1; saveCart(); renderCart(); });
-    row.querySelector('.cart-remove').addEventListener('click', () => { cart.splice(idx, 1); saveCart(); renderCart(); });
-    cartLines.appendChild(row);
-  });
-  cartCount.textContent = count;
-  cartCount.dataset.empty = String(count === 0);
-  subtotalEl.textContent = money(total);
-}
-renderCart();
-
-$('checkoutBtn').addEventListener('click', () => {
-  $('cartNote').textContent = cart.length
-    ? 'Checkout connects to your store platform (Shopify or WooCommerce) in the next build.'
-    : 'Add a piece first.';
+mountCart({
+  linesEl: $('cartLines'), countEl: $('cartCount'), subtotalEl: $('subtotal'), noteEl: $('cartNote'), checkoutBtn: $('checkoutBtn'),
+  emptyText: 'Nothing selected yet. Walk through the Great Hall and select a piece to add it here.',
 });
 
 /* ------------------------------ Drawers ------------------------------ */
@@ -829,11 +821,107 @@ $('cartBtn').addEventListener('click', () => openDrawer(cartDrawer));
 $('menuBtn').addEventListener('click', () => openDrawer(menuDrawer));
 scrim.addEventListener('click', closeDrawers);
 document.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', closeDrawers));
-document.querySelectorAll('[data-goto]').forEach((b) => b.addEventListener('click', () => { closeDrawers(); goToStation(Number(b.dataset.goto)); }));
-$('aboutBtn').addEventListener('click', () => { $('aboutCopy').hidden = !$('aboutCopy').hidden; });
-$('contactBtn').addEventListener('click', () => { $('contactCopy').hidden = !$('contactCopy').hidden; });
-document.querySelector('.brand').addEventListener('click', (e) => { e.preventDefault(); closeDrawers(); scrollTo({ top: 0, behavior: reduceMotion ? 'auto' : 'smooth' }); });
-addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeCard(); closeDrawers(); } });
+document.querySelectorAll('[data-goto]').forEach((b) => b.addEventListener('click', () => {
+  closeDrawers();
+  if (Number(b.dataset.goto) === 0) returnToLanding(); else goToStation(Number(b.dataset.goto));
+}));
+/* ------------------------------ Overlays: the Collection grid and Contact ------------------------------ */
+const overlays = [$('showcase'), $('contact')];
+let overlayReturn = null;
+function openOverlay(el) {
+  closeDrawers(); closeCard();
+  overlayReturn = document.activeElement;
+  overlays.forEach((o) => { o.classList.toggle('is-open', o === el); o.setAttribute('aria-hidden', String(o !== el)); });
+  document.documentElement.style.overflow = 'hidden';
+  setTimeout(() => { const f = el.querySelector('.overlay-close'); if (f) f.focus(); }, 60);
+}
+function closeOverlays() {
+  if (!overlays.some((o) => o.classList.contains('is-open'))) return;
+  overlays.forEach((o) => { o.classList.remove('is-open'); o.setAttribute('aria-hidden', 'true'); });
+  document.documentElement.style.overflow = '';
+  if (overlayReturn && overlayReturn.focus) overlayReturn.focus();
+}
+overlays.forEach((o) => {
+  o.addEventListener('click', (e) => { if (e.target === o) closeOverlays(); });
+  o.querySelectorAll('[data-overlay-close]').forEach((b) => b.addEventListener('click', closeOverlays));
+  // Let the panel scroll without walking the tour behind it.
+  o.addEventListener('wheel', (e) => e.stopPropagation(), { passive: true });
+});
+$('openShowcase').addEventListener('click', () => openOverlay($('showcase')));
+$('openContact').addEventListener('click', () => openOverlay($('contact')));
+
+$('showcaseGrid').innerHTML = PRODUCT_LIST.map((p) => `
+  <button class="show-tile" type="button" data-id="${p.id}">
+    <span class="show-frame"><img src="${p.image}" alt="" loading="lazy" width="1000" height="1000"><span class="show-num">No. ${p.num}</span></span>
+    <span class="show-meta"><span class="show-name">${p.name}</span><span class="show-price">${p.price}</span></span>
+  </button>`).join('');
+$('showcaseGrid').addEventListener('click', (e) => {
+  const t = e.target.closest('.show-tile'); if (!t) return;
+  overlayReturn = null; closeOverlays(); goToProduct(t.dataset.id);
+});
+
+$('mailLink').href = `mailto:${CONTACT.email}`; $('mailLink').textContent = CONTACT.email;
+$('contactForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = e.target, status = $('fStatus');
+  const bad = [...f.elements].find((el) => el.willValidate && !el.checkValidity());
+  if (bad) { bad.focus(); status.textContent = bad.type === 'email' ? 'Please enter a valid email address.' : 'Please fill in your name, email and message.'; return; }
+  const data = Object.fromEntries(new FormData(f));
+  if (CONTACT.formEndpoint) {
+    $('fSend').disabled = true; status.textContent = 'Sending…';
+    try {
+      const r = await fetch(CONTACT.formEndpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(data) });
+      if (!r.ok) throw new Error();
+      f.reset(); status.textContent = 'Thank you. The concierge will reply within one working day.';
+    } catch (err) { status.textContent = `That didn't send. Please email ${CONTACT.email}.`; }
+    $('fSend').disabled = false;
+  } else {
+    const body = [`Name: ${data.name}`, `Email: ${data.email}`, data.phone && `Phone: ${data.phone}`, `Request: ${data.type}`].filter(Boolean).join('\n') + `\n\n${data.message}`;
+    location.href = `mailto:${CONTACT.email}?subject=${encodeURIComponent(`${data.type} — ${data.name}`)}&body=${encodeURIComponent(body)}`;
+    status.textContent = 'Your email app is opening with the request filled in.';
+  }
+});
+
+/* Logo: a smooth way back to the landing view.
+   From inside the hall the screen dips to the brand colour, the view resets to the square, then fades back in.
+   From the square it glides back with an eased scroll. */
+const veil = $('veil');
+let returning = false;
+function easeScrollTo(top, ms) {
+  return new Promise((resolve) => {
+    const from = scrollY, d = top - from, t0 = performance.now();
+    const step = (now) => {
+      const k = Math.min(1, (now - t0) / ms), e = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+      scrollTo(0, from + d * e);
+      if (k < 1) requestAnimationFrame(step); else resolve();
+    };
+    requestAnimationFrame(step);
+  });
+}
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+async function returnToLanding() {
+  if (returning) return;
+  returning = true;
+  closeDrawers(); closeCard(); pendingOpen = null; pendingFree = false;
+  if (reduceMotion || scrollY < 2) { if (mode === 'free') exitFree(); scrollTo(0, 0); returning = false; return; }
+  if (mode === 'free' || targetT > HALL0 - 1) {
+    veil.classList.add('is-on');
+    await wait(650);
+    if (mode === 'free') exitFree();
+    ignoreScrollUntil = performance.now() + 400;
+    scrollTo(0, Math.round(VH * 0.35));          // start a little forward, then settle back for a gentle arrival
+    readScroll(); curT = targetT; tourOff.yaw = tourOff.tyaw = tourOff.pitch = tourOff.tpitch = 0;
+    lookVel.x = lookVel.y = 0; blend = 1;
+    await wait(80);
+    veil.classList.remove('is-on');
+    await easeScrollTo(0, 1600);
+  } else {
+    await easeScrollTo(0, Math.min(2200, 900 + scrollY / VH * 450));
+  }
+  returning = false;
+}
+document.querySelector('.brand').addEventListener('click', (e) => { e.preventDefault(); returnToLanding(); });
+addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeCard(); closeDrawers(); closeOverlays(); } });
 
 let pendingOpen = null;
 function buildCollection() {
@@ -992,6 +1080,10 @@ function frame() {
     renderer.render(scene, camera);
     if (targetT > 0.45 && mode === 'tour') updateChapter();
     if (pendingOpen && Math.abs(curT - pendingOpen.station) < 0.04) { openCard(pendingOpen.id); pendingOpen = null; }
+    if (openId && !pendingOpen && mode === 'tour') {
+      const here = STATIONS[Math.round(targetT)];
+      if (!here || here.id !== openId) closeCard();       // scrolled on, or back out to the square
+    }
     if (pendingFree && Math.abs(curT - HALL0) < 0.04) { pendingFree = false; enterFree(); }
   }
   requestAnimationFrame(frame);
@@ -999,4 +1091,12 @@ function frame() {
 requestAnimationFrame(frame);
 
 // Small hook for testing and for wiring a store later.
+/* Deep link from the Collection / product pages: index.html#product_03 walks straight to that piece. */
+(function deepLink() {
+  const m = /^#(product_\d\d)$/.exec(location.hash);
+  if (!m) return;
+  const go = () => { if (extReady && hallReady) { history.replaceState(null, '', location.pathname); goToProduct(m[1]); } else setTimeout(go, 300); };
+  go();
+})();
+
 window.palais = { openCard, closeCard, goToStation, goToProduct, enterFree, exitFree, products, camera, get ready() { return extReady && hallReady; } };

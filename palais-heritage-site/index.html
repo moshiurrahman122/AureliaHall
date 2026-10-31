@@ -86,24 +86,16 @@
   <nav class="progress" id="progress" aria-label="Rooms of the hall"></nav>
   <div class="tooltip" id="tooltip" hidden></div>
 
-  <!-- In-hall controls: go to any piece, switch between guided tour and free exploring -->
+  <!-- In-hall controls: the collection wheel with the tour / explore switch at its centre -->
   <div class="hall-ui" id="hallUi">
-    <div class="hall-ui-row">
-      <button class="btn-mode" id="modeBtn" type="button" aria-pressed="false">Explore freely</button>
-      <div class="dock-wrap">
-        <div class="dock" id="dock" role="toolbar" aria-label="Go to a piece"></div>
+    <div class="wheel-wrap" id="wheelWrap">
+      <svg class="wheel" id="wheel" viewBox="-120 -120 240 240" role="group" aria-label="The collection: select a piece to go to it"></svg>
+      <div class="mode-switch" id="modeSwitch" role="radiogroup" aria-label="How to move through the hall">
+        <button type="button" role="radio" id="modeTour" aria-checked="true">Guided<br>Tour</button>
+        <span class="mode-rule" aria-hidden="true"></span>
+        <button type="button" role="radio" id="modeFree" aria-checked="false">Explore<br>Freely</button>
       </div>
     </div>
-  </div>
-  <div class="move-pad" id="movePad" hidden aria-label="Walk">
-    <button type="button" data-pad="fwd" aria-label="Walk forward" class="pad-up">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg></button>
-    <button type="button" data-pad="left" aria-label="Turn left" class="pad-left">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
-    <button type="button" data-pad="right" aria-label="Turn right" class="pad-right">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
-    <button type="button" data-pad="back" aria-label="Walk back" class="pad-down">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
   </div>
 
   <!-- Product card -->
@@ -146,18 +138,63 @@
     <div class="menu-links">
       <button type="button" data-goto="0">The Square</button>
       <button type="button" data-goto="5">The Great Hall</button>
-      <button type="button" id="aboutBtn">About</button>
-      <button type="button" id="contactBtn">Contact</button>
+      <button type="button" id="openShowcase">The Collection</button>
+      <button type="button" id="openContact">Contact</button>
     </div>
-    <div class="menu-section-label">The Collection</div>
+    <div class="menu-section-label">Go to a piece in the hall</div>
     <div class="collection" id="collection"></div>
-    <p class="about-copy" id="aboutCopy" hidden>Palais Héritage gathers couture, jewellery and fine leather goods inside a restored civic hall. Every piece is shown where it can be seen properly: under the chandelier, in a lit alcove, or on velvet.</p>
-    <p class="about-copy" id="contactCopy" hidden>Private appointments: concierge@palais-heritage.com</p>
   </aside>
+
+
+  <!-- The Collection: every piece in a grid, floating over the hall -->
+  <section class="overlay" id="showcase" role="dialog" aria-modal="true" aria-labelledby="showcaseTitle" aria-hidden="true">
+    <div class="overlay-panel showcase-panel">
+      <button class="overlay-close" type="button" data-overlay-close aria-label="Close">×</button>
+      <div class="overlay-head">
+        <div class="eyebrow">The Archive</div>
+        <h2 class="overlay-title" id="showcaseTitle">The Collection</h2>
+      </div>
+      <div class="showcase-grid" id="showcaseGrid"></div>
+    </div>
+  </section>
+
+  <!-- Contact: concierge details and an appointment form, over the hall -->
+  <section class="overlay" id="contact" role="dialog" aria-modal="true" aria-labelledby="contactTitle" aria-hidden="true">
+    <div class="overlay-panel contact-panel">
+      <button class="overlay-close" type="button" data-overlay-close aria-label="Close">×</button>
+      <div class="contact-info">
+        <div class="eyebrow">Concierge</div>
+        <h2 class="overlay-title" id="contactTitle">Contact</h2>
+        <div class="info-item"><span>Email</span><a id="mailLink" href="mailto:concierge@palais-heritage.com">concierge@palais-heritage.com</a></div>
+        <div class="info-item"><span>Appointments</span><p>Private viewings by appointment only.<br>Tuesday to Saturday, 10:00 to 19:00</p></div>
+        <div class="info-item"><span>Reply</span><p>Within one working day.</p></div>
+      </div>
+      <form class="contact-form" id="contactForm" novalidate>
+        <div class="field"><label for="fName">Full name</label><input id="fName" name="name" autocomplete="name" required></div>
+        <div class="field"><label for="fEmail">Email</label><input id="fEmail" name="email" type="email" autocomplete="email" required></div>
+        <div class="field"><label for="fPhone">Phone (optional)</label><input id="fPhone" name="phone" type="tel" autocomplete="tel"></div>
+        <div class="field">
+          <label for="fType">I would like</label>
+          <select id="fType" name="type">
+            <option>A private appointment</option>
+            <option>A video appointment</option>
+            <option>To ask about a piece</option>
+            <option>Help with an order</option>
+          </select>
+        </div>
+        <div class="field full"><label for="fMsg">Message</label><textarea id="fMsg" name="message" required></textarea></div>
+        <div class="form-foot full">
+          <button class="btn btn-primary" type="submit" id="fSend">Send Request</button>
+          <div class="form-status" id="fStatus" role="status"></div>
+        </div>
+      </form>
+    </div>
+  </section>
 
   <div class="toast" id="toast" role="status"></div>
   <div class="fallback" id="fallback" hidden></div>
 
+  <div class="veil" id="veil" aria-hidden="true"></div>
   <div class="track" id="track"></div>
 
   <script type="module" src="js/main.js"></script>
