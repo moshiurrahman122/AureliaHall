@@ -54,6 +54,7 @@ layoutTrack();
 function stationScrollY(i) { return Math.round(i * VH); }
 
 /* ------------------------------ Renderer ------------------------------ */
+
 const canvas = $('hall');
 let renderer;
 try {
@@ -63,6 +64,40 @@ try {
   fb.hidden = false;
   fb.textContent = 'Your browser could not open the 3D hall. Use the menu to browse the collection.';
 }
+/* ------------------------------ Preloader ------------------------------ */
+const preloader = (() => {
+  const el = $('preloader'), bar = $('plBar'), num = $('plNum'), cap = $('plCaption');
+  const t0 = performance.now(), MIN = 2600, PATIENCE = 15000;
+  const parts = { square: 0, hall: 0 };
+  let shown = 0, done = false, extOk = false, hallOk = false;
+  const target = () => parts.square * 0.55 + parts.hall * 0.45;
+  const tick = () => {
+    if (done || !el) return;
+    shown += (target() - shown) * 0.08;
+    if (target() - shown < 0.002) shown = target();
+    bar.style.transform = `scaleX(${shown})`;
+    num.textContent = String(Math.min(100, Math.round(shown * 100))).padStart(2, '0');
+    const elapsed = performance.now() - t0;
+    if (elapsed > MIN && ((hallOk && shown > 0.995) || (extOk && elapsed > PATIENCE) || (!renderer && elapsed > MIN))) return finish();
+    requestAnimationFrame(tick);
+  };
+  function finish() {
+    if (done || !el) return; done = true;
+    bar.style.transform = 'scaleX(1)'; num.textContent = '100'; cap.textContent = 'Welcome';
+    setTimeout(() => {
+      el.classList.add('is-opening');
+      document.body.classList.remove('is-loading');
+      setTimeout(() => { el.classList.add('is-gone'); el.setAttribute('aria-hidden', 'true'); }, 2000);
+    }, 380);
+  }
+  if (el) requestAnimationFrame(tick); else document.body.classList.remove('is-loading');
+  return {
+    progress(part, f) { parts[part] = Math.max(parts[part], Math.min(1, f)); if (cap && !done) cap.textContent = part === 'square' ? 'Lighting the square' : 'Polishing the Great Hall'; },
+    loaded(part) { parts[part] = 1; if (part === 'square') extOk = true; else hallOk = true; },
+    failed() { extOk = true; hallOk = true; parts.square = parts.hall = 1; },
+  };
+})();
+
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0f1116);
 const camera = new THREE.PerspectiveCamera(52, innerWidth / innerHeight, 0.2, 1600);
@@ -216,13 +251,14 @@ function loadOutside() {
       });
       scene.add(extRoot);
       Promise.resolve().finally(() => {             // trees left out to keep the square light
-        extReady = true;
+        extReady = true; preloader.loaded('square');
         $('heroZoom').classList.add('is-hidden');
         resolve();
       });
     }, (ev) => {
+      preloader.progress('square', ev.loaded / (ev.total || 12e6));
       if (ev.total) loadNote.textContent = `Preparing the square · ${Math.round(ev.loaded / ev.total * 100)}%`;
-    }, () => { loadNote.textContent = 'The square could not be loaded. Check the assets folder.'; resolve(); });
+    }, () => { loadNote.textContent = 'The square could not be loaded. Check the assets folder.'; preloader.failed(); resolve(); });
   });
 }
 function loadTrees() {
@@ -283,12 +319,14 @@ function loadHall() {
       products.set(id, { root: o, meshes, halo, center, data, hover: 0 });
     });
     buildCollection(); buildDock();
-    hallReady = true;
+    hallReady = true; preloader.loaded('hall');
     requestAnimationFrame(() => { try { renderThumbs(); } catch (e) { /* pictures are optional */ } });
     loadNote.textContent = '';
   }, (ev) => {
+    preloader.progress('hall', ev.loaded / (ev.total || 9.5e6));
     if (ev.total && scrollY < VH * 0.3) loadNote.textContent = `Preparing the Great Hall · ${Math.round(ev.loaded / ev.total * 100)}%`;
   }, () => {
+    preloader.failed();
     loadNote.textContent = 'The hall could not be loaded. Check that hall.glb sits in the assets folder.';
   });
 }
